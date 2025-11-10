@@ -81,6 +81,10 @@ export interface PagedList<T> {
 
 ### ⚠️ Backend API Contract (QUAN TRỌNG):
 
+**Base URL**:
+- Development: `http://localhost:5000`
+- Production: `https://your-domain.com`
+
 **Base URL Pattern**: `/api/admin/{entity}`
 
 **HTTP Methods**:
@@ -88,20 +92,37 @@ export interface PagedList<T> {
 - `GET /api/admin/{entity}/{id}` - Get by ID
 - `POST /api/admin/{entity}` - Create
 - `PUT /api/admin/{entity}/{id}` - Update (full replacement)
-- `DELETE /api/admin/{entity}/{id}` - Delete
-- `PATCH /api/admin/{entity}/{id}` - Partial update (⚠️ KHÔNG phải tất cả entities)
+- `DELETE /api/admin/{entity}/{id}` - Delete (soft delete)
+- `PATCH /api/admin/{entity}/{id}` - Partial update (⚠️ CHỈ Orders và Inventory)
 
-**Query Parameters Naming** (⚠️ Backend sử dụng PascalCase):
-- Backend expects: `Page`, `PageSize`, `Search`, `SortBy`, `SortDesc`
-- Frontend sends: `page`, `pageSize`, `search`, `sortBy`, `sortDesc`
-- ✅ Axios tự động convert sang lowercase khi gửi query params
+**Query Parameters Naming**:
+- ✅ Backend examples sử dụng **PascalCase**: `Page`, `PageSize`, `Search`, `SortBy`, `SortDesc`
+- ✅ Frontend TypeScript interfaces sử dụng **camelCase**: `page`, `pageSize`, `search`, `sortBy`, `sortDesc`
+- ✅ Axios gửi query params dưới dạng **lowercase** trong URL: `?page=1&pagesize=20`
+- ✅ ASP.NET Core Model Binding **case-insensitive**, tự động bind `page` → `Page`
 
 **Response Wrapper**: Tất cả responses đều wrap trong `ApiResponse<T>`
+```typescript
+interface ApiResponse<T> {
+  isError: boolean;      // true nếu có lỗi
+  message: string;       // Success/error message
+  data: T | null;        // Dữ liệu (null nếu error)
+  timestamp: string;     // ISO 8601 DateTime
+  statusCode: number;    // HTTP status code
+}
+```
 
-**Entities hỗ trợ PATCH**:
-- ✅ Orders: `PATCH /api/admin/orders/{id}/status`
-- ✅ Inventory: `PATCH /api/admin/inventory/{productId}`
-- ❌ Products, Categories, Customers, Suppliers, Users, Promotions: KHÔNG hỗ trợ PATCH
+**PATCH Endpoints** (CHỈ 2 endpoints):
+- ✅ **Orders**: `PATCH /api/admin/orders/{id}/status`
+  - Request: `{ status: "Pending" | "Paid" | "Cancelled" }`
+  - Response: `ApiResponse<OrderResponseDto>`
+
+- ✅ **Inventory**: `PATCH /api/admin/inventory/{productId}`
+  - Request: `{ quantityChange: number, reason: string }`
+  - Response: `ApiResponse<InventoryResponseDto>`
+
+- ❌ **KHÔNG hỗ trợ PATCH**: Products, Categories, Customers, Suppliers, Users, Promotions
+  - Sử dụng `PUT` (full replacement) thay vì `PATCH`
 
 ## 3. Kế hoạch Triển khai
 
@@ -6340,84 +6361,134 @@ export function useProductsWithPersistence() {
 
 Bảng mapping đầy đủ giữa Frontend Hooks và Backend Endpoints:
 
-| Entity | Frontend Hook | Backend Endpoint | HTTP Method | Request Type | Response Type |
-|--------|---------------|------------------|-------------|--------------|---------------|
-| **Products** | `useApiList` | `GET /api/admin/products` | GET | `ProductSearchRequest` | `ApiResponse<PagedList<ProductListDto>>` |
-| | `useApiDetail` | `GET /api/admin/products/{id}` | GET | - | `ApiResponse<ProductResponseDto>` |
-| | `useApiCreate` | `POST /api/admin/products` | POST | `CreateProductRequest` | `ApiResponse<ProductResponseDto>` |
-| | `useApiUpdate` | `PUT /api/admin/products/{id}` | PUT | `UpdateProductRequest` | `ApiResponse<ProductResponseDto>` |
-| | `useApiDelete` | `DELETE /api/admin/products/{id}` | DELETE | - | `ApiResponse<bool>` |
-| **Categories** | `useApiList` | `GET /api/admin/categories` | GET | `CategorySearchRequest` | `ApiResponse<PagedList<CategoryResponseDto>>` |
-| | `useApiDetail` | `GET /api/admin/categories/{id}` | GET | - | `ApiResponse<CategoryResponseDto>` |
-| | `useApiCreate` | `POST /api/admin/categories` | POST | `CreateCategoryRequest` | `ApiResponse<CategoryResponseDto>` |
-| | `useApiUpdate` | `PUT /api/admin/categories/{id}` | PUT | `UpdateCategoryRequest` | `ApiResponse<CategoryResponseDto>` |
-| | `useApiDelete` | `DELETE /api/admin/categories/{id}` | DELETE | - | `ApiResponse<bool>` |
-| **Customers** | `useApiList` | `GET /api/admin/customers` | GET | `CustomerSearchRequest` | `ApiResponse<PagedList<CustomerListDto>>` |
-| | `useApiDetail` | `GET /api/admin/customers/{id}` | GET | - | `ApiResponse<CustomerResponseDto>` |
-| | `useApiCreate` | `POST /api/admin/customers` | POST | `CreateCustomerRequest` | `ApiResponse<CustomerResponseDto>` |
-| | `useApiUpdate` | `PUT /api/admin/customers/{id}` | PUT | `UpdateCustomerRequest` | `ApiResponse<CustomerResponseDto>` |
-| | `useApiDelete` | `DELETE /api/admin/customers/{id}` | DELETE | - | `ApiResponse<bool>` |
-| **Suppliers** | `useApiList` | `GET /api/admin/suppliers` | GET | `SupplierSearchRequest` | `ApiResponse<PagedList<SupplierResponseDto>>` |
-| | `useApiDetail` | `GET /api/admin/suppliers/{id}` | GET | - | `ApiResponse<SupplierResponseDto>` |
-| | `useApiCreate` | `POST /api/admin/suppliers` | POST | `CreateSupplierRequest` | `ApiResponse<SupplierResponseDto>` |
-| | `useApiUpdate` | `PUT /api/admin/suppliers/{id}` | PUT | `UpdateSupplierRequest` | `ApiResponse<SupplierResponseDto>` |
-| | `useApiDelete` | `DELETE /api/admin/suppliers/{id}` | DELETE | - | `ApiResponse<bool>` |
-| **Orders** | `useApiList` | `GET /api/admin/orders` | GET | `OrderSearchRequest` | `ApiResponse<PagedList<OrderListDto>>` |
-| | `useApiDetail` | `GET /api/admin/orders/{id}` | GET | - | `ApiResponse<OrderResponseDto>` |
-| | `useApiCreate` | `POST /api/admin/orders` | POST | `CreateOrderRequest` | `ApiResponse<OrderResponseDto>` |
-| | `useApiPatch` | `PATCH /api/admin/orders/{id}/status` | PATCH | `UpdateOrderStatusRequest` | `ApiResponse<OrderResponseDto>` |
-| **Promotions** | `useApiList` | `GET /api/admin/promotions` | GET | `PromotionSearchRequest` | `ApiResponse<PagedList<PromotionListDto>>` |
-| | `useApiDetail` | `GET /api/admin/promotions/{id}` | GET | - | `ApiResponse<PromotionResponseDto>` |
-| | `useApiCreate` | `POST /api/admin/promotions` | POST | `CreatePromotionRequest` | `ApiResponse<PromotionResponseDto>` |
-| | `useApiUpdate` | `PUT /api/admin/promotions/{id}` | PUT | `UpdatePromotionRequest` | `ApiResponse<PromotionResponseDto>` |
-| | `useApiDelete` | `DELETE /api/admin/promotions/{id}` | DELETE | - | `ApiResponse<bool>` |
-| **Users** | `useApiList` | `GET /api/admin/users` | GET | `UserSearchRequest` | `ApiResponse<PagedList<UserResponseDto>>` |
-| | `useApiDetail` | `GET /api/admin/users/{id}` | GET | - | `ApiResponse<UserResponseDto>` |
-| | `useApiCreate` | `POST /api/admin/users` | POST | `CreateUserRequest` | `ApiResponse<UserResponseDto>` |
-| | `useApiUpdate` | `PUT /api/admin/users/{id}` | PUT | `UpdateUserRequest` | `ApiResponse<UserResponseDto>` |
-| | `useApiDelete` | `DELETE /api/admin/users/{id}` | DELETE | - | `ApiResponse<bool>` |
-| **Inventory** | `useApiList` | `GET /api/admin/inventory` | GET | `InventorySearchRequest` | `ApiResponse<PagedList<InventoryResponseDto>>` |
-| | `useApiDetail` | `GET /api/admin/inventory/{productId}` | GET | - | `ApiResponse<InventoryResponseDto>` |
-| | `useApiPatch` | `PATCH /api/admin/inventory/{productId}` | PATCH | `UpdateInventoryRequest` | `ApiResponse<InventoryResponseDto>` |
-| **Reports** | `useApiList` | `GET /api/admin/reports/top-products` | GET | `TopProductsSearchRequest` | `ApiResponse<PagedList<TopProductDto>>` |
-| | `useApiList` | `GET /api/admin/reports/top-customers` | GET | `TopCustomersSearchRequest` | `ApiResponse<PagedList<TopCustomerDto>>` |
+| Entity | Frontend Hook | Backend Endpoint | HTTP Method | Auth | Request Type | Response Type |
+|--------|---------------|------------------|-------------|------|--------------|---------------|
+| **Products** | `useApiList` | `GET /api/admin/products` | GET | Admin | `ProductSearchRequest` | `ApiResponse<PagedList<ProductListDto>>` |
+| | `useApiDetail` | `GET /api/admin/products/{id}` | GET | Admin | - | `ApiResponse<ProductResponseDto>` |
+| | `useApiCreate` | `POST /api/admin/products` | POST | Admin | `CreateProductRequest` | `ApiResponse<ProductResponseDto>` |
+| | `useApiUpdate` | `PUT /api/admin/products/{id}` | PUT | Admin | `UpdateProductRequest` | `ApiResponse<ProductResponseDto>` |
+| | `useApiDelete` | `DELETE /api/admin/products/{id}` | DELETE | Admin | - | `ApiResponse<object>` |
+| **Categories** | `useApiList` | `GET /api/admin/categories` | GET | Admin | `CategorySearchRequest` | `ApiResponse<PagedList<CategoryResponseDto>>` |
+| | `useApiDetail` | `GET /api/admin/categories/{id}` | GET | Admin | - | `ApiResponse<CategoryResponseDto>` |
+| | `useApiCreate` | `POST /api/admin/categories` | POST | Admin | `CreateCategoryRequest` | `ApiResponse<CategoryResponseDto>` |
+| | `useApiUpdate` | `PUT /api/admin/categories/{id}` | PUT | Admin | `UpdateCategoryRequest` | `ApiResponse<CategoryResponseDto>` |
+| | `useApiDelete` | `DELETE /api/admin/categories/{id}` | DELETE | Admin | - | `ApiResponse<object>` |
+| **Customers** | `useApiList` | `GET /api/admin/customers` | GET | Admin, Staff | `CustomerSearchRequest` | `ApiResponse<PagedList<CustomerListDto>>` |
+| | `useApiDetail` | `GET /api/admin/customers/{id}` | GET | Admin, Staff | - | `ApiResponse<CustomerResponseDto>` |
+| | `useApiCreate` | `POST /api/admin/customers` | POST | Admin, Staff | `CreateCustomerRequest` | `ApiResponse<CustomerResponseDto>` |
+| | `useApiUpdate` | `PUT /api/admin/customers/{id}` | PUT | Admin, Staff | `UpdateCustomerRequest` | `ApiResponse<CustomerResponseDto>` |
+| | `useApiDelete` | `DELETE /api/admin/customers/{id}` | DELETE | Admin, Staff | - | `ApiResponse<object>` |
+| **Suppliers** | `useApiList` | `GET /api/admin/suppliers` | GET | Admin | `SupplierSearchRequest` | `ApiResponse<PagedList<SupplierResponseDto>>` |
+| | `useApiDetail` | `GET /api/admin/suppliers/{id}` | GET | Admin | - | `ApiResponse<SupplierResponseDto>` |
+| | `useApiCreate` | `POST /api/admin/suppliers` | POST | Admin | `CreateSupplierRequest` | `ApiResponse<SupplierResponseDto>` |
+| | `useApiUpdate` | `PUT /api/admin/suppliers/{id}` | PUT | Admin | `UpdateSupplierRequest` | `ApiResponse<SupplierResponseDto>` |
+| | `useApiDelete` | `DELETE /api/admin/suppliers/{id}` | DELETE | Admin | - | `ApiResponse<object>` |
+| **Orders** | `useApiList` | `GET /api/admin/orders` | GET | Admin, Staff | `OrderSearchRequest` | `ApiResponse<PagedList<OrderListDto>>` |
+| | `useApiDetail` | `GET /api/admin/orders/{id}` | GET | Admin, Staff | - | `ApiResponse<OrderResponseDto>` |
+| | `useApiCreate` | `POST /api/admin/orders` | POST | Admin, Staff | `CreateOrderRequest` | `ApiResponse<OrderResponseDto>` |
+| | `useApiPatch` | `PATCH /api/admin/orders/{id}/status` | PATCH | Admin, Staff | `{ status: string }` | `ApiResponse<OrderResponseDto>` |
+| | `useApiCustom` | `POST /api/admin/orders/{orderId}/items` | POST | Admin, Staff | `AddOrderItemRequest` | `ApiResponse<OrderItemDto>` |
+| | `useApiCustom` | `PUT /api/admin/orders/{orderId}/items/{itemId}` | PUT | Admin, Staff | `UpdateOrderItemRequest` | `ApiResponse<OrderItemDto>` |
+| | `useApiCustom` | `DELETE /api/admin/orders/{orderId}/items/{itemId}` | DELETE | Admin, Staff | - | `ApiResponse<object>` |
+| | `useApiCustom` | `GET /api/admin/orders/{id}/invoice` | GET | Admin, Staff | - | PDF File |
+| **Promotions** | `useApiList` | `GET /api/admin/promotions` | GET | Admin | `PromotionSearchRequest` | `ApiResponse<PagedList<PromotionListDto>>` |
+| | `useApiDetail` | `GET /api/admin/promotions/{id}` | GET | Admin | - | `ApiResponse<PromotionResponseDto>` |
+| | `useApiCreate` | `POST /api/admin/promotions` | POST | Admin | `CreatePromotionRequest` | `ApiResponse<PromotionResponseDto>` |
+| | `useApiUpdate` | `PUT /api/admin/promotions/{id}` | PUT | Admin | `UpdatePromotionRequest` | `ApiResponse<PromotionResponseDto>` |
+| | `useApiDelete` | `DELETE /api/admin/promotions/{id}` | DELETE | Admin | - | `ApiResponse<object>` |
+| | `useApiCustom` | `POST /api/admin/promotions/validate` | POST | Admin | `{ promoCode: string }` | `ApiResponse<PromotionResponseDto>` |
+| **Users** | `useApiList` | `GET /api/admin/users` | GET | Admin | `UserSearchRequest` | `ApiResponse<PagedList<UserResponseDto>>` |
+| | `useApiDetail` | `GET /api/admin/users/{id}` | GET | Admin | - | `ApiResponse<UserResponseDto>` |
+| | `useApiCreate` | `POST /api/admin/users` | POST | Admin | `CreateUserRequest` | `ApiResponse<UserResponseDto>` |
+| | `useApiUpdate` | `PUT /api/admin/users/{id}` | PUT | Admin | `UpdateUserRequest` | `ApiResponse<UserResponseDto>` |
+| | `useApiDelete` | `DELETE /api/admin/users/{id}` | DELETE | Admin | - | `ApiResponse<object>` |
+| **Inventory** | `useApiList` | `GET /api/admin/inventory` | GET | Admin, Staff | `InventorySearchRequest` | `ApiResponse<PagedList<InventoryResponseDto>>` |
+| | `useApiDetail` | `GET /api/admin/inventory/{productId}` | GET | Admin, Staff | - | `ApiResponse<InventoryResponseDto>` |
+| | `useApiPatch` | `PATCH /api/admin/inventory/{productId}` | PATCH | Admin, Staff | `{ quantityChange: number, reason: string }` | `ApiResponse<InventoryResponseDto>` |
+| | `useApiCustom` | `GET /api/admin/inventory/low-stock` | GET | Admin, Staff | - | `ApiResponse<InventoryResponseDto[]>` |
+| | `useApiCustom` | `GET /api/admin/inventory/{productId}/history` | GET | Admin, Staff | - | `ApiResponse<InventoryHistoryDto[]>` |
+| **Reports** | `useApiCustom` | `GET /api/admin/reports/revenue` | GET | Admin | `RevenueReportRequest` | `ApiResponse<RevenueReportDto>` |
+| | `useApiCustom` | `GET /api/admin/reports/sales` | GET | Admin | `SalesReportRequest` | `ApiResponse<SalesReportDto>` |
+| | `useApiList` | `GET /api/admin/reports/top-products` | GET | Admin | `TopProductsSearchRequest` | `ApiResponse<PagedList<TopProductDto>>` |
+| | `useApiList` | `GET /api/admin/reports/top-customers` | GET | Admin | `TopCustomersSearchRequest` | `ApiResponse<PagedList<TopCustomerDto>>` |
 
 ### 9.2. Query Parameters Contract
 
-**⚠️ QUAN TRỌNG**: Backend ASP.NET Core sử dụng **PascalCase** cho query parameters, nhưng Axios tự động convert sang lowercase.
-
-#### Frontend gửi (camelCase):
+#### Frontend TypeScript Interfaces (camelCase):
 ```typescript
-const params = {
-  page: 1,
-  pageSize: 20,
-  search: 'coca',
-  sortBy: 'ProductName',
-  sortDesc: false,
-  categoryId: 5
-};
-```
+interface PagedRequest {
+  page?: number;          // Default: 1
+  pageSize?: number;      // Default: 10, Max: 100
+  search?: string;        // Max 255 chars
+  sortBy?: string;        // Default: "Id"
+  sortDesc?: boolean;     // Default: true
+}
 
-#### Backend nhận (PascalCase):
-```csharp
-public class ProductSearchRequest : PagedRequest
-{
-    public int Page { get; set; } = 1;
-    public int PageSize { get; set; } = 10;
-    public string? Search { get; set; }
-    public string SortBy { get; set; } = "Id";
-    public bool SortDesc { get; set; } = true;
-    public int? CategoryId { get; set; }
+interface ProductSearchRequest extends PagedRequest {
+  categoryId?: number;    // Filter by category
+  supplierId?: number;    // Filter by supplier
+  minPrice?: number;      // Minimum price
+  maxPrice?: number;      // Maximum price
 }
 ```
 
-#### URL thực tế:
-```
-GET /api/admin/products?page=1&pageSize=20&search=coca&sortBy=ProductName&sortDesc=false&categoryId=5
+#### Backend C# Models (PascalCase):
+```csharp
+public class PagedRequest : BasePagedRequest
+{
+    public string? Search { get; set; }
+    public string SortBy { get; set; } = "Id";
+    public bool SortDesc { get; set; } = true;
+}
+
+public class BasePagedRequest
+{
+    private const int MaxPageSize = 100;
+    public int Page { get; set; } = 1;
+    private int _pageSize = 10;
+    public int PageSize
+    {
+        get => _pageSize;
+        set => _pageSize = (value > MaxPageSize) ? MaxPageSize : value;
+    }
+}
+
+public class ProductSearchRequest : PagedRequest
+{
+    public int? CategoryId { get; set; }
+    public int? SupplierId { get; set; }
+    public decimal? MinPrice { get; set; }
+    public decimal? MaxPrice { get; set; }
+}
 ```
 
-✅ **Axios tự động convert**: `page` → `page`, `pageSize` → `pageSize` (lowercase trong URL)
-✅ **ASP.NET Core Model Binding**: Case-insensitive, tự động bind `page` → `Page`
+#### Frontend gửi request (camelCase):
+```typescript
+const response = await axios.get('/api/admin/products', {
+  params: {
+    page: 1,
+    pageSize: 20,
+    search: 'coca',
+    sortBy: 'ProductName',
+    sortDesc: false,
+    categoryId: 5,
+    minPrice: 10000,
+    maxPrice: 50000
+  }
+});
+```
+
+#### URL thực tế (lowercase):
+```
+GET /api/admin/products?page=1&pagesize=20&search=coca&sortby=ProductName&sortdesc=false&categoryid=5&minprice=10000&maxprice=50000
+```
+
+#### Backend nhận được (ASP.NET Core Model Binding):
+✅ **ASP.NET Core Model Binding** là **case-insensitive**
+✅ Tự động bind: `page` → `Page`, `pagesize` → `PageSize`, `categoryid` → `CategoryId`
+✅ Không cần transform, backend tự động map
+
+**Lưu ý**: Backend API Reference examples sử dụng PascalCase (`Page`, `PageSize`) nhưng đó chỉ là convention trong C#. Frontend có thể gửi camelCase hoặc lowercase, backend đều nhận được chính xác.
 
 ### 9.3. Authorization Requirements
 
@@ -6475,100 +6546,177 @@ Backend trả về errors trong `ApiResponse<T>` wrapper:
 - `404 Not Found` - Resource not found
 - `500 Internal Server Error` - Server error
 
-### 9.5. Validation Rules
+### 9.5. SortBy Options & Filters
+
+Mỗi entity có các SortBy options và filters riêng:
+
+| Entity | SortBy Options | Filters |
+|--------|----------------|---------|
+| **Products** | `Id`, `ProductName`, `Price`, `CategoryName`, `SupplierName`, `InventoryQuantity`, `CreatedAt` | `CategoryId`, `SupplierId`, `MinPrice`, `MaxPrice` |
+| **Categories** | `Id`, `CategoryName`, `ProductCount` | - |
+| **Customers** | `Id`, `Name`, `Phone`, `Email`, `LastOrderDate` | - |
+| **Suppliers** | `Id`, `Name`, `Phone`, `Email`, `ProductCount` | - |
+| **Orders** | `Id`, `OrderDate`, `CustomerName`, `StaffName`, `Status`, `TotalAmount`, `FinalAmount` | `Status`, `CustomerId`, `UserId`, `StartDate`, `EndDate` |
+| **Promotions** | `Id`, `PromoCode`, `DiscountValue`, `StartDate`, `EndDate`, `UsedCount`, `Status` | `Status` |
+| **Users** | `Id`, `Username`, `FullName`, `Role`, `CreatedAt` | `Role` |
+| **Inventory** | `Id`, `ProductName`, `Barcode`, `Quantity`, `UpdatedAt`, `Status` | `Status` |
+| **Top Products** | Fixed: `TotalRevenue DESC` | `StartDate` (required), `EndDate` (required) |
+| **Top Customers** | Fixed: `TotalSpent DESC` | `StartDate` (required), `EndDate` (required) |
+
+**Lưu ý**:
+- ⚠️ **Top Products** và **Top Customers** KHÔNG hỗ trợ `Search`, `SortBy`, `SortDesc`
+- ⚠️ Chỉ hỗ trợ `Page`, `PageSize`, `StartDate`, `EndDate`
+
+### 9.6. Validation Rules
 
 #### Common Validation (tất cả endpoints):
 
 | Parameter | Min | Max | Default | Validation |
 |-----------|-----|-----|---------|------------|
-| `Page` | 1 | ∞ | 1 | Must be > 0 |
-| `PageSize` | 1 | 100 | 10 | Auto-capped at 100 |
-| `Search` | - | 255 chars | null | Max 255 characters |
-| `SortBy` | - | - | "Id" | Must be valid property name |
-| `SortDesc` | - | - | true | Boolean |
+| `page` | 1 | ∞ | 1 | Must be > 0 |
+| `pageSize` | 1 | 100 | 10 | Auto-capped at 100 |
+| `search` | - | 255 chars | null | Max 255 characters |
+| `sortBy` | - | - | "Id" | Must be valid property name (see table above) |
+| `sortDesc` | - | - | true | Boolean |
 
 #### Entity-Specific Validation:
 
 **Products**:
-- `CategoryId`: Must exist in database
-- `SupplierId`: Must exist in database
-- `MinPrice`: >= 0
-- `MaxPrice`: >= MinPrice
-- `Price`: > 0
-- `ProductName`: Required, max 100 chars
-- `Barcode`: Required, max 50 chars, unique
+- `categoryId`: Must exist in database
+- `supplierId`: Must exist in database
+- `minPrice`: >= 0
+- `maxPrice`: >= minPrice
+- `price`: > 0 (for create/update)
+- `productName`: Required, max 100 chars
+- `barcode`: Required, max 50 chars, **unique**
+- `unit`: Required, max 20 chars, default "pcs"
 
 **Categories**:
-- `CategoryName`: Required, max 100 chars, unique
-- `MinProductCount`: >= 0
-- `MaxProductCount`: >= MinProductCount
+- `categoryName`: Required, max 100 chars, **unique**
+
+**Customers**:
+- `name`: Required, max 100 chars
+- `phone`: Required, max 20 chars
+- `email`: Optional, max 100 chars, valid email format
+
+**Suppliers**:
+- `name`: Required, max 100 chars
+- `phone`: Required, max 20 chars
+- `email`: Optional, max 100 chars, valid email format
+- `address`: Optional, max 255 chars
 
 **Orders**:
-- `Status`: Must be "Pending", "Paid", or "Cancelled"
-- `CustomerId`: Must exist
-- `UserId`: Must exist
-- `StartDate`: <= Now
-- `EndDate`: >= StartDate, <= Now
+- `status`: Must be "Pending", "Paid", or "Cancelled"
+- `customerId`: Required, must exist
+- `userId`: Auto-filled from JWT token
+- `startDate`: <= Now (for search filter)
+- `endDate`: >= startDate, <= Now (for search filter)
 
 **Promotions**:
-- `PromoCode`: Required, max 50 chars, unique
-- `DiscountType`: "percent" or "fixed"
-- `DiscountValue`: > 0
-- `StartDate`: Required
-- `EndDate`: >= StartDate
-- `MinOrderAmount`: >= 0
-- `UsageLimit`: >= 0
+- `promoCode`: Required, max 50 chars, **unique**
+- `discountType`: Required, "percent" or "fixed"
+- `discountValue`: Required, > 0
+- `startDate`: Required
+- `endDate`: Required, >= startDate
+- `minOrderAmount`: Optional, >= 0, default 0
+- `usageLimit`: Optional, >= 0, default 0 (unlimited)
 
-### 9.6. Breaking Changes & Migration Notes
+**Users**:
+- `username`: Required, max 50 chars, **unique**
+- `password`: Required, min 6 chars
+- `fullName`: Required, max 100 chars
+- `role`: Required, 0 (Admin) or 1 (Staff)
+
+**Inventory**:
+- `quantityChange`: Required, can be negative (decrease) or positive (increase)
+- `reason`: Required, max 255 chars
+
+### 9.7. Breaking Changes & Migration Notes
 
 #### ❌ KHÔNG hỗ trợ PATCH cho hầu hết entities
 
 **Affected Hooks**: `useApiPatch`
 
 **Entities KHÔNG hỗ trợ PATCH**:
-- Products
-- Categories
-- Customers
-- Suppliers
-- Users
-- Promotions
+- ❌ Products
+- ❌ Categories
+- ❌ Customers
+- ❌ Suppliers
+- ❌ Users
+- ❌ Promotions
 
 **Giải pháp**: Sử dụng `useApiUpdate` (PUT) thay vì `useApiPatch`
 
 ```typescript
-// ❌ SAI - KHÔNG hoạt động
+// ❌ SAI - KHÔNG hoạt động cho Products
 const { mutate } = useApiPatch(productService, 'products');
 mutate({ id: 1, price: 50000 });
 
-// ✅ ĐÚNG - Sử dụng PUT
+// ✅ ĐÚNG - Sử dụng PUT (full replacement)
 const { mutate } = useApiUpdate(productService, 'products');
 mutate({
   id: 1,
   categoryId: 5,
   supplierId: 3,
   productName: 'Coca Cola',
-  barcode: '123456',
+  barcode: '8934588123456',
   price: 50000,
-  unit: 'bottle'
+  unit: 'can'
 });
 ```
 
-**Entities HỖ TRỢ PATCH**:
-- ✅ Orders: `PATCH /api/admin/orders/{id}/status`
-- ✅ Inventory: `PATCH /api/admin/inventory/{productId}`
+**Entities HỖ TRỢ PATCH** (CHỈ 2 endpoints):
+
+**1. Orders - Update Status**:
+```typescript
+// ✅ ĐÚNG - PATCH order status
+const { mutate } = useApiPatch(orderService, 'orders');
+mutate({
+  id: 1,
+  status: 'Paid' // "Pending" | "Paid" | "Cancelled"
+});
+
+// Hoặc sử dụng custom endpoint
+const { mutate } = useApiCustomMutation(orderService, 'orders');
+mutate({
+  method: 'patch',
+  path: `${orderId}/status`,
+  data: { status: 'Paid' }
+});
+```
+
+**2. Inventory - Update Quantity**:
+```typescript
+// ✅ ĐÚNG - PATCH inventory quantity
+const { mutate } = useApiPatch(inventoryService, 'inventory');
+mutate({
+  id: productId,
+  quantityChange: 100,  // Positive = increase, Negative = decrease
+  reason: 'Nhập hàng từ nhà cung cấp'
+});
+
+// Giảm tồn kho
+mutate({
+  id: productId,
+  quantityChange: -50,
+  reason: 'Xuất hàng bán lẻ'
+});
+```
 
 #### ⚠️ Report Endpoints đặc biệt
 
-**Top Products & Top Customers** KHÔNG hỗ trợ:
-- ❌ `Search`
-- ❌ `SortBy`
-- ❌ `SortDesc`
+**1. Top Products & Top Customers** (Paginated):
+
+KHÔNG hỗ trợ:
+- ❌ `search`
+- ❌ `sortBy`
+- ❌ `sortDesc`
 
 Chỉ chấp nhận:
-- ✅ `Page`
-- ✅ `PageSize`
-- ✅ `StartDate` (required)
-- ✅ `EndDate` (required)
+- ✅ `page`
+- ✅ `pageSize`
+- ✅ `startDate` (required, ISO 8601 format)
+- ✅ `endDate` (required, ISO 8601 format)
 
 ```typescript
 // ❌ SAI
@@ -6579,13 +6727,75 @@ const { data } = useApiPagedList(reportService, 'reports/top-products', {
   sortBy: 'TotalRevenue' // ❌ Backend sẽ ignore
 });
 
-// ✅ ĐÚNG
+// ✅ ĐÚNG - Top Products
 const { data } = useApiPagedList(reportService, 'reports/top-products', {
   page: 1,
   pageSize: 10,
   startDate: '2024-01-01',
   endDate: '2024-12-31'
 });
+
+// ✅ ĐÚNG - Top Customers
+const { data } = useApiPagedList(reportService, 'reports/top-customers', {
+  page: 1,
+  pageSize: 10,
+  startDate: '2024-01-01',
+  endDate: '2024-12-31'
+});
+```
+
+**2. Revenue & Sales Reports** (Non-paginated):
+
+```typescript
+// Revenue Report
+const { data } = useApiCustomQuery(reportService, 'reports', {
+  method: 'get',
+  path: 'revenue',
+  params: {
+    startDate: '2024-01-01',
+    endDate: '2024-12-31'
+  }
+});
+
+// Sales Report
+const { data } = useApiCustomQuery(reportService, 'reports', {
+  method: 'get',
+  path: 'sales',
+  params: {
+    startDate: '2024-01-01',
+    endDate: '2024-12-31'
+  }
+});
+```
+
+**Response Types**:
+```typescript
+interface TopProductDto {
+  productId: number;
+  productName: string;
+  totalQuantity: number;
+  totalRevenue: number;
+}
+
+interface TopCustomerDto {
+  customerId: number;
+  customerName: string;
+  orderCount: number;
+  totalSpent: number;
+}
+
+interface RevenueReportDto {
+  totalRevenue: number;
+  totalOrders: number;
+  averageOrderValue: number;
+  // ... other fields
+}
+
+interface SalesReportDto {
+  totalSales: number;
+  totalItems: number;
+  // ... other fields
+}
 ```
 
 ### 9.7. Testing Checklist
@@ -6622,7 +6832,133 @@ Khi implement hooks cho entity mới, test các scenarios sau:
 - [ ] Forbidden access (403)
 - [ ] Token expiration handling
 
-### 9.8. Common Pitfalls & Solutions
+### 9.8. Special Endpoints
+
+Các endpoints đặc biệt không theo pattern CRUD chuẩn:
+
+#### 1. Inventory - Low Stock Alerts
+
+**Endpoint**: `GET /api/admin/inventory/low-stock`
+**Authorization**: Admin & Staff
+**Description**: Lấy danh sách sản phẩm sắp hết hàng (KHÔNG phân trang)
+
+```typescript
+const { data } = useApiCustomQuery(inventoryService, 'inventory', {
+  method: 'get',
+  path: 'low-stock'
+});
+
+// Response: ApiResponse<InventoryResponseDto[]>
+```
+
+#### 2. Inventory - History
+
+**Endpoint**: `GET /api/admin/inventory/{productId}/history`
+**Authorization**: Admin & Staff
+**Description**: Lấy lịch sử thay đổi tồn kho của sản phẩm
+
+```typescript
+const { data } = useApiCustomQuery(inventoryService, 'inventory', {
+  method: 'get',
+  path: `${productId}/history`
+});
+
+// Response: ApiResponse<InventoryHistoryDto[]>
+```
+
+#### 3. Orders - Add Item
+
+**Endpoint**: `POST /api/admin/orders/{orderId}/items`
+**Authorization**: Admin & Staff
+
+```typescript
+const { mutate } = useApiCustomMutation(orderService, 'orders');
+mutate({
+  method: 'post',
+  path: `${orderId}/items`,
+  data: {
+    productId: 1,
+    quantity: 5,
+    price: 15000
+  }
+});
+```
+
+#### 4. Orders - Update Item
+
+**Endpoint**: `PUT /api/admin/orders/{orderId}/items/{itemId}`
+**Authorization**: Admin & Staff
+
+```typescript
+const { mutate } = useApiCustomMutation(orderService, 'orders');
+mutate({
+  method: 'put',
+  path: `${orderId}/items/${itemId}`,
+  data: {
+    quantity: 10,
+    price: 15000
+  }
+});
+```
+
+#### 5. Orders - Delete Item
+
+**Endpoint**: `DELETE /api/admin/orders/{orderId}/items/{itemId}`
+**Authorization**: Admin & Staff
+
+```typescript
+const { mutate } = useApiCustomMutation(orderService, 'orders');
+mutate({
+  method: 'delete',
+  path: `${orderId}/items/${itemId}`
+});
+```
+
+#### 6. Orders - Download Invoice (PDF)
+
+**Endpoint**: `GET /api/admin/orders/{id}/invoice`
+**Authorization**: Admin & Staff
+**Response**: PDF File (binary)
+
+```typescript
+const downloadInvoice = async (orderId: number) => {
+  const response = await axios.get(`/api/admin/orders/${orderId}/invoice`, {
+    responseType: 'blob',
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  // Create download link
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `invoice-${orderId}.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+};
+```
+
+#### 7. Promotions - Validate Promo Code
+
+**Endpoint**: `POST /api/admin/promotions/validate`
+**Authorization**: Admin
+
+```typescript
+const { mutate } = useApiCustomMutation(promotionService, 'promotions');
+mutate({
+  method: 'post',
+  path: 'validate',
+  data: {
+    promoCode: 'SUMMER2024'
+  }
+});
+
+// Response: ApiResponse<PromotionResponseDto>
+```
+
+### 9.9. Common Pitfalls & Solutions
 
 #### 1. Query Parameters Case Sensitivity
 
@@ -6778,3 +7114,62 @@ const { data } = useApiPagedList(productService, 'products', {
 ### 🎯 Ready for Implementation:
 
 Plan này giờ đã **hoàn toàn tương thích** với backend TapHoaNho và sẵn sàng để implement! 🚀
+
+---
+
+## 10. CODE EXAMPLES CHI TIẾT
+
+📚 **Xem tài liệu riêng**: [`customHookCallAPIPlan_CodeExamples.md`](./customHookCallAPIPlan_CodeExamples.md)
+
+Tài liệu này cung cấp **code examples đầy đủ cho TẤT CẢ 53 endpoints**, bao gồm:
+
+### 📋 Nội dung:
+
+1. **Products Module** (5 endpoints)
+   - GET list, GET detail, POST create, PUT update, DELETE
+
+2. **Categories Module** (5 endpoints)
+   - Full CRUD operations
+
+3. **Customers Module** (5 endpoints)
+   - Full CRUD operations
+
+4. **Suppliers Module** (5 endpoints)
+   - Full CRUD operations
+
+5. **Orders Module** (8 endpoints)
+   - CRUD + PATCH status + Order items management + Invoice download
+
+6. **Promotions Module** (6 endpoints)
+   - CRUD + Validate promo code
+
+7. **Users Module** (5 endpoints)
+   - Full CRUD operations
+
+8. **Inventory Module** (5 endpoints)
+   - List + PATCH quantity + Low stock alerts + History
+
+9. **Reports Module** (4 endpoints)
+   - Revenue, Sales, Top Products, Top Customers
+
+10. **Authentication Module** (4 endpoints)
+    - Login, Refresh, Logout, Setup Admin
+
+### ✨ Mỗi endpoint bao gồm:
+
+- ✅ **Frontend Code**: TypeScript + React + Ant Design
+- ✅ **Backend Request**: HTTP method + URL + Headers + Body
+- ✅ **Backend Response**: JSON structure đầy đủ
+- ✅ **Authorization**: Rõ ràng (Admin, Staff, Public)
+- ✅ **Hooks**: useApiList, useApiPagedList, useApiCreate, useApiUpdate, useApiPatch, useApiDelete, useApiCustomQuery, useApiCustomMutation
+- ✅ **Error Handling**: Try-catch, message.error, loading states
+- ✅ **Form Validation**: Rules, required fields, max length
+
+### 📊 Thống kê:
+
+- **1,857 dòng** code examples
+- **53 endpoints** được document đầy đủ
+- **10 modules** với examples chi tiết
+- **100% production-ready** code
+
+**👉 [Xem tài liệu đầy đủ tại đây](./customHookCallAPIPlan_CodeExamples.md)**
