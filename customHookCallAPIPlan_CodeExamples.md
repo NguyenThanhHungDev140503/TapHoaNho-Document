@@ -1,7 +1,7 @@
 # CODE EXAMPLES CHI TIẾT CHO TỪNG ENDPOINT
 
-> **Tài liệu này**: Cung cấp code examples đầy đủ cho **TẤT CẢ 53 endpoints** trong hệ thống TapHoaNho.
-> 
+> **Tài liệu này**: Cung cấp code examples đầy đủ cho **TẤT CẢ 52 endpoints** trong hệ thống TapHoaNho.
+>
 > **Liên kết**: Đây là phần mở rộng của `customHookCallAPIPlan.md`
 
 ---
@@ -19,7 +19,7 @@
 9. [Reports Module (4 endpoints)](#9-reports-module)
 10. [Authentication Module (4 endpoints)](#10-authentication-module)
 
-**Tổng cộng: 53 endpoints**
+**Tổng cộng: 52 endpoints** (4 Auth + 48 Admin endpoints)
 
 ---
 
@@ -589,6 +589,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **Frontend Code**:
 ```typescript
+import { useApiPagedList } from '@/hooks/useApi';
+import { categoryService } from '@/services/categoryService';
+
 const { data, isLoading } = useApiPagedList(categoryService, 'categories', {
   page: 1,
   pageSize: 20,
@@ -627,6 +630,9 @@ const { data, isLoading } = useApiPagedList(categoryService, 'categories', {
 
 **Frontend Code**:
 ```typescript
+import { useApiCreate } from '@/hooks/useApi';
+import { categoryService } from '@/services/categoryService';
+
 const { mutate } = useApiCreate(categoryService, 'categories');
 mutate({ categoryName: 'Bánh kẹo' });
 ```
@@ -662,6 +668,9 @@ Content-Type: application/json
 
 **Frontend Code**:
 ```typescript
+import { useApiUpdate } from '@/hooks/useApi';
+import { categoryService } from '@/services/categoryService';
+
 const { mutate } = useApiUpdate(categoryService, 'categories');
 mutate({ id: 3, categoryName: 'Bánh kẹo & Snack' });
 ```
@@ -682,6 +691,9 @@ Content-Type: application/json
 
 **Frontend Code**:
 ```typescript
+import { useApiDelete } from '@/hooks/useApi';
+import { categoryService } from '@/services/categoryService';
+
 const { mutate } = useApiDelete(categoryService, 'categories');
 mutate(3);
 ```
@@ -698,6 +710,9 @@ mutate(3);
 
 **Frontend Code**:
 ```typescript
+import { useApiPagedList } from '@/hooks/useApi';
+import { customerService } from '@/services/customerService';
+
 const { data } = useApiPagedList(customerService, 'customers', {
   page: 1,
   pageSize: 20,
@@ -737,6 +752,9 @@ const { data } = useApiPagedList(customerService, 'customers', {
 
 **Frontend Code**:
 ```typescript
+import { useApiCreate } from '@/hooks/useApi';
+import { customerService } from '@/services/customerService';
+
 const { mutate } = useApiCreate(customerService, 'customers');
 mutate({
   name: 'Trần Thị B',
@@ -769,6 +787,9 @@ Content-Type: application/json
 
 **Frontend Code**:
 ```typescript
+import { useApiPagedList } from '@/hooks/useApi';
+import { supplierService } from '@/services/supplierService';
+
 const { data } = useApiPagedList(supplierService, 'suppliers', {
   page: 1,
   pageSize: 20,
@@ -802,6 +823,9 @@ const { data } = useApiPagedList(supplierService, 'suppliers', {
 
 **Frontend Code**:
 ```typescript
+import { useApiCreate } from '@/hooks/useApi';
+import { supplierService } from '@/services/supplierService';
+
 const { mutate } = useApiCreate(supplierService, 'suppliers');
 mutate({
   name: 'Pepsi Vietnam',
@@ -821,6 +845,9 @@ mutate({
 
 **Frontend Code**:
 ```typescript
+import { useApiPagedList } from '@/hooks/useApi';
+import { orderService } from '@/services/orderService';
+
 const { data } = useApiPagedList(orderService, 'orders', {
   page: 1,
   pageSize: 20,
@@ -867,6 +894,9 @@ const { data } = useApiPagedList(orderService, 'orders', {
 
 **Frontend Code**:
 ```typescript
+import { useApiCreate } from '@/hooks/useApi';
+import { orderService } from '@/services/orderService';
+
 const { mutate } = useApiCreate(orderService, 'orders');
 mutate({
   customerId: 1,
@@ -938,6 +968,9 @@ Content-Type: application/json
 
 **Frontend Code**:
 ```typescript
+import { useApiPatch } from '@/hooks/useApi';
+import { orderService } from '@/services/orderService';
+
 const { mutate } = useApiPatch(orderService, 'orders');
 
 // Update to Paid
@@ -988,6 +1021,9 @@ Content-Type: application/json
 
 **Frontend Code**:
 ```typescript
+import { useApiCustomMutation } from '@/hooks/useApi';
+import { orderService } from '@/services/orderService';
+
 const { mutate } = useApiCustomMutation(orderService, 'orders');
 mutate({
   method: 'post',
@@ -1035,6 +1071,9 @@ Content-Type: application/json
 
 **Frontend Code**:
 ```typescript
+import { useApiCustomMutation } from '@/hooks/useApi';
+import { orderService } from '@/services/orderService';
+
 const { mutate } = useApiCustomMutation(orderService, 'orders');
 mutate({
   method: 'put',
@@ -1052,6 +1091,9 @@ mutate({
 
 **Frontend Code**:
 ```typescript
+import { useApiCustomMutation } from '@/hooks/useApi';
+import { orderService } from '@/services/orderService';
+
 const { mutate } = useApiCustomMutation(orderService, 'orders');
 mutate({
   method: 'delete',
@@ -1105,6 +1147,9 @@ const downloadInvoice = async (orderId: number) => {
 
 **Frontend Code**:
 ```typescript
+import { useApiPagedList } from '@/hooks/useApi';
+import { promotionService } from '@/services/promotionService';
+
 const { data } = useApiPagedList(promotionService, 'promotions', {
   page: 1,
   pageSize: 20,
@@ -1144,6 +1189,9 @@ const { data } = useApiPagedList(promotionService, 'promotions', {
 
 **Frontend Code**:
 ```typescript
+import { useApiCreate } from '@/hooks/useApi';
+import { promotionService } from '@/services/promotionService';
+
 const { mutate } = useApiCreate(promotionService, 'promotions');
 mutate({
   promoCode: 'NEWYEAR2025',
@@ -1162,6 +1210,9 @@ mutate({
 
 **Frontend Code**:
 ```typescript
+import { useApiCustomMutation } from '@/hooks/useApi';
+import { promotionService } from '@/services/promotionService';
+
 const { mutate, data } = useApiCustomMutation(promotionService, 'promotions');
 
 mutate({
@@ -1209,6 +1260,9 @@ Content-Type: application/json
 
 **Frontend Code**:
 ```typescript
+import { useApiPagedList } from '@/hooks/useApi';
+import { userService } from '@/services/userService';
+
 const { data } = useApiPagedList(userService, 'users', {
   page: 1,
   pageSize: 20,
@@ -1250,6 +1304,9 @@ const { data } = useApiPagedList(userService, 'users', {
 
 **Frontend Code**:
 ```typescript
+import { useApiCreate } from '@/hooks/useApi';
+import { userService } from '@/services/userService';
+
 const { mutate } = useApiCreate(userService, 'users');
 mutate({
   username: 'staff02',
@@ -1269,6 +1326,9 @@ mutate({
 
 **Frontend Code**:
 ```typescript
+import { useApiPagedList } from '@/hooks/useApi';
+import { inventoryService } from '@/services/inventoryService';
+
 const { data } = useApiPagedList(inventoryService, 'inventory', {
   page: 1,
   pageSize: 20,
@@ -1305,6 +1365,9 @@ const { data } = useApiPagedList(inventoryService, 'inventory', {
 
 **Frontend Code**:
 ```typescript
+import { useApiPatch } from '@/hooks/useApi';
+import { inventoryService } from '@/services/inventoryService';
+
 const { mutate } = useApiPatch(inventoryService, 'inventory');
 
 // Nhập hàng (tăng tồn kho)
@@ -1368,6 +1431,9 @@ Content-Type: application/json
 
 **Frontend Code**:
 ```typescript
+import { useApiCustomQuery } from '@/hooks/useApi';
+import { inventoryService } from '@/services/inventoryService';
+
 const { data } = useApiCustomQuery(inventoryService, 'inventory', {
   method: 'get',
   path: 'low-stock'
@@ -1409,6 +1475,9 @@ const { data } = useApiCustomQuery(inventoryService, 'inventory', {
 
 **Frontend Code**:
 ```typescript
+import { useApiCustomQuery } from '@/hooks/useApi';
+import { inventoryService } from '@/services/inventoryService';
+
 const { data } = useApiCustomQuery(inventoryService, 'inventory', {
   method: 'get',
   path: `${productId}/history`
@@ -1455,6 +1524,11 @@ const { data } = useApiCustomQuery(inventoryService, 'inventory', {
 
 **Frontend Code**:
 ```typescript
+import { useApiCustomQuery } from '@/hooks/useApi';
+import { reportService } from '@/services/reportService';
+
+// Sử dụng useApiCustomQuery để consistent với pattern của hệ thống
+// và dễ dàng extend với custom logic (caching, error handling, etc.)
 const { data } = useApiCustomQuery(reportService, 'reports', {
   method: 'get',
   path: 'revenue',
@@ -1494,6 +1568,11 @@ const { data } = useApiCustomQuery(reportService, 'reports', {
 
 **Frontend Code**:
 ```typescript
+import { useApiCustomQuery } from '@/hooks/useApi';
+import { reportService } from '@/services/reportService';
+
+// Sử dụng useApiCustomQuery để consistent với pattern của hệ thống
+// và dễ dàng extend với custom logic (caching, error handling, etc.)
 const { data } = useApiCustomQuery(reportService, 'reports', {
   method: 'get',
   path: 'sales',
@@ -1532,6 +1611,9 @@ const { data } = useApiCustomQuery(reportService, 'reports', {
 
 **Frontend Code**:
 ```typescript
+import { useApiPagedList } from '@/hooks/useApi';
+import { reportService } from '@/services/reportService';
+
 const { data } = useApiPagedList(reportService, 'reports/top-products', {
   page: 1,
   pageSize: 10,
@@ -1581,6 +1663,9 @@ const { data } = useApiPagedList(reportService, 'reports/top-products', {
 
 **Frontend Code**:
 ```typescript
+import { useApiPagedList } from '@/hooks/useApi';
+import { reportService } from '@/services/reportService';
+
 const { data } = useApiPagedList(reportService, 'reports/top-customers', {
   page: 1,
   pageSize: 10,

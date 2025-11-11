@@ -7121,7 +7121,7 @@ Plan này giờ đã **hoàn toàn tương thích** với backend TapHoaNho và 
 
 📚 **Xem tài liệu riêng**: [`customHookCallAPIPlan_CodeExamples.md`](./customHookCallAPIPlan_CodeExamples.md)
 
-Tài liệu này cung cấp **code examples đầy đủ cho TẤT CẢ 53 endpoints**, bao gồm:
+Tài liệu này cung cấp **code examples đầy đủ cho TẤT CẢ 52 endpoints**, bao gồm:
 
 ### 📋 Nội dung:
 
@@ -7168,7 +7168,7 @@ Tài liệu này cung cấp **code examples đầy đủ cho TẤT CẢ 53 endpo
 ### 📊 Thống kê:
 
 - **1,857 dòng** code examples
-- **53 endpoints** được document đầy đủ
+- **52 endpoints** được document đầy đủ (4 Auth + 48 Admin endpoints)
 - **10 modules** với examples chi tiết
 - **100% production-ready** code
 
