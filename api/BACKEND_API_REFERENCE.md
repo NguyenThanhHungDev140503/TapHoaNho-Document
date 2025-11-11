@@ -130,21 +130,21 @@ interface PagedList<T> {
 
 ## 2. AUTHENTICATION MODULE
 
-**Base URL:** `/api/auth`  
+**Base URL:** `/api/Auth`
 **Authorization:** AllowAnonymous (Public)
 
 ### 2.1. 🔐 Login
 
-**Endpoint:** `POST /api/auth/login`  
-**Authorization:** Public  
+**Endpoint:** `POST /api/Auth/login`
+**Authorization:** Public
 **Description:** Đăng nhập và nhận access token + refresh token
 
 #### Request Body
 
 ```typescript
 interface LoginRequest {
-  username: string;  // Required
-  password: string;  // Required
+  username?: string;  // Optional, nullable
+  password?: string;  // Optional, nullable
 }
 ```
 
@@ -168,7 +168,7 @@ interface UserDto {
 #### Example Request
 
 ```typescript
-const response = await axios.post('/api/auth/login', {
+const response = await axios.post('/api/Auth/login', {
   username: 'admin',
   password: 'Admin@123'
 });
@@ -205,7 +205,7 @@ const response = await axios.post('/api/auth/login', {
 
 ### 2.2. 🔧 Setup Admin
 
-**Endpoint:** `POST /api/auth/setup-admin`
+**Endpoint:** `POST /api/Auth/setup-admin`
 **Authorization:** Public
 **Description:** Tạo tài khoản Admin đầu tiên (chỉ hoạt động khi chưa có Admin nào)
 
@@ -241,7 +241,7 @@ interface UserResponseDto {
 #### Example Request
 
 ```typescript
-const response = await axios.post('/api/auth/setup-admin', {
+const response = await axios.post('/api/Auth/setup-admin', {
   username: 'admin',
   password: 'Admin@123',
   fullName: 'System Administrator',
@@ -259,7 +259,7 @@ const response = await axios.post('/api/auth/setup-admin', {
 
 ### 2.3. 🔄 Refresh Token
 
-**Endpoint:** `POST /api/auth/refresh`
+**Endpoint:** `POST /api/Auth/refresh`
 **Authorization:** Public
 **Description:** Làm mới access token bằng refresh token
 
@@ -285,7 +285,7 @@ interface LoginResponse {
 #### Example Request
 
 ```typescript
-const response = await axios.post('/api/auth/refresh', {
+const response = await axios.post('/api/Auth/refresh', {
   accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
   refreshToken: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
 });
@@ -301,7 +301,7 @@ const response = await axios.post('/api/auth/refresh', {
 
 ### 2.4. 🚪 Logout
 
-**Endpoint:** `POST /api/auth/logout`
+**Endpoint:** `POST /api/Auth/logout`
 **Authorization:** Public
 **Description:** Đăng xuất và revoke refresh token
 
@@ -322,7 +322,7 @@ interface LogoutRequest {
 #### Example Request
 
 ```typescript
-const response = await axios.post('/api/auth/logout', {
+const response = await axios.post('/api/Auth/logout', {
   refreshToken: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
 });
 ```
@@ -668,6 +668,12 @@ interface CategorySearchRequest {
   search?: string;        // Tìm kiếm theo CategoryName
   sortBy?: string;        // Default: "Id"
   sortDesc?: boolean;     // Default: true
+
+  // Filters
+  minProductCount?: number;    // Số lượng sản phẩm tối thiểu
+  maxProductCount?: number;    // Số lượng sản phẩm tối đa
+  createdAfter?: string;       // ISO 8601 DateTime - Lọc category tạo sau ngày này
+  createdBefore?: string;      // ISO 8601 DateTime - Lọc category tạo trước ngày này
 }
 ```
 
@@ -1158,13 +1164,13 @@ const response = await axios.post('/api/admin/orders', {
 
 ```typescript
 interface UpdateOrderStatusRequest {
-  status: string;  // Required, "Pending" | "Paid" | "Cancelled"
+  status: string;  // Required, "paid" | "canceled"
 }
 ```
 
 #### Validation Rules
 
-- `status`: Required, phải là "Pending", "Paid", hoặc "Cancelled"
+- `status`: Required, phải là "paid" hoặc "canceled" (lowercase)
 
 ---
 
@@ -1350,7 +1356,7 @@ interface CreatePromotionRequest {
   endDate: string;         // Required, ISO 8601 DateTime
   minOrderAmount?: number; // Optional, >= 0, default 0
   usageLimit?: number;     // Optional, >= 1, default 1
-  status?: string;         // Optional, "active" | "inactive", default "active"
+  status: string;          // Required, "active" | "inactive"
 }
 ```
 
@@ -1364,7 +1370,7 @@ interface CreatePromotionRequest {
 - `endDate`: Required, ISO 8601 DateTime, phải sau startDate
 - `minOrderAmount`: Optional, >= 0, default 0
 - `usageLimit`: Optional, >= 1, default 1
-- `status`: Optional, "active" hoặc "inactive", default "active"
+- `status`: Required, "active" hoặc "inactive"
 
 ---
 
@@ -1386,7 +1392,7 @@ interface UpdatePromotionRequest {
   endDate: string;         // Required, ISO 8601 DateTime
   minOrderAmount?: number; // Optional, >= 0, default 0
   usageLimit?: number;     // Optional, >= 1, default 1
-  status?: string;         // Optional, "active" | "inactive"
+  status: string;          // Required, "active" | "inactive"
 }
 ```
 
@@ -1603,7 +1609,9 @@ interface InventorySearchRequest {
   sortDesc?: boolean;
 
   // Filters
-  status?: string;        // "in_stock" | "low_stock" | "out_of_stock"
+  productId?: number;     // Lọc theo Product ID
+  minQuantity?: number;   // Số lượng tồn kho tối thiểu
+  maxQuantity?: number;   // Số lượng tồn kho tối đa
 }
 ```
 
@@ -2020,8 +2028,8 @@ export interface PagedRequest extends BasePagedRequest {
 // ============================================
 
 export interface LoginRequest {
-  username: string;
-  password: string;
+  username?: string;  // Optional, nullable
+  password?: string;  // Optional, nullable
 }
 
 export interface LoginResponse {
@@ -2113,7 +2121,12 @@ export interface ProductResponseDto {
 // CATEGORIES
 // ============================================
 
-export interface CategorySearchRequest extends PagedRequest {}
+export interface CategorySearchRequest extends PagedRequest {
+  minProductCount?: number;
+  maxProductCount?: number;
+  createdAfter?: string;    // ISO 8601 DateTime
+  createdBefore?: string;   // ISO 8601 DateTime
+}
 
 export interface CreateCategoryRequest {
   categoryName: string;
@@ -2236,7 +2249,7 @@ export interface OrderItemInput {
 }
 
 export interface UpdateOrderStatusRequest {
-  status: string;  // "Pending" | "Paid" | "Cancelled"
+  status: string;  // "paid" | "canceled"
 }
 
 export interface AddOrderItemRequest {
@@ -2319,7 +2332,7 @@ export interface CreatePromotionRequest {
   endDate: string;
   minOrderAmount?: number;
   usageLimit?: number;
-  status?: string;           // "active" | "inactive"
+  status: string;            // Required, "active" | "inactive"
 }
 
 export interface UpdatePromotionRequest {
@@ -2332,7 +2345,7 @@ export interface UpdatePromotionRequest {
   endDate: string;
   minOrderAmount?: number;
   usageLimit?: number;
-  status?: string;
+  status: string;            // Required, "active" | "inactive"
 }
 
 export interface ValidatePromoRequest {
@@ -2419,7 +2432,9 @@ export interface UserResponseDto {
 // ============================================
 
 export interface InventorySearchRequest extends PagedRequest {
-  status?: string;  // "in_stock" | "low_stock" | "out_of_stock"
+  productId?: number;
+  minQuantity?: number;
+  maxQuantity?: number;
 }
 
 export interface UpdateInventoryRequest {
@@ -2751,10 +2766,10 @@ try {
 
 | Module | Endpoint | Method | Auth | Description |
 |--------|----------|--------|------|-------------|
-| **Auth** | `/api/auth/login` | POST | Public | Đăng nhập |
-| | `/api/auth/setup-admin` | POST | Public | Tạo Admin đầu tiên |
-| | `/api/auth/refresh` | POST | Public | Làm mới token |
-| | `/api/auth/logout` | POST | Public | Đăng xuất |
+| **Auth** | `/api/Auth/login` | POST | Public | Đăng nhập |
+| | `/api/Auth/setup-admin` | POST | Public | Tạo Admin đầu tiên |
+| | `/api/Auth/refresh` | POST | Public | Làm mới token |
+| | `/api/Auth/logout` | POST | Public | Đăng xuất |
 | **Products** | `/api/admin/products` | GET | Admin | Danh sách sản phẩm |
 | | `/api/admin/products/{id}` | GET | Admin | Chi tiết sản phẩm |
 | | `/api/admin/products` | POST | Admin | Tạo sản phẩm |
@@ -2809,13 +2824,13 @@ try {
 | Endpoint | Search Fields | SortBy Options | Filters |
 |----------|---------------|----------------|---------|
 | Products | ProductName, Barcode | Id, ProductName, Price, CategoryName, SupplierName, InventoryQuantity, CreatedAt | CategoryId, SupplierId, MinPrice, MaxPrice |
-| Categories | CategoryName | Id, CategoryName, ProductCount | - |
+| Categories | CategoryName | Id, CategoryName, ProductCount | MinProductCount, MaxProductCount, CreatedAfter, CreatedBefore |
 | Customers | Name, Phone, Email | Id, Name, Phone, Email, LastOrderDate | - |
 | Suppliers | Name, Phone, Email | Id, Name, Phone, Email, ProductCount | - |
 | Orders | CustomerName, StaffName | Id, OrderDate, CustomerName, StaffName, Status, TotalAmount, FinalAmount | Status, CustomerId, UserId, StartDate, EndDate |
 | Promotions | PromoCode, Description | Id, PromoCode, DiscountValue, StartDate, EndDate, UsedCount, Status | Status |
 | Users | Username, FullName | Id, Username, FullName, Role, CreatedAt | Role |
-| Inventory | ProductName, Barcode | Id, ProductName, Barcode, Quantity, UpdatedAt, Status | Status |
+| Inventory | ProductName, Barcode | Id, ProductName, Barcode, Quantity, UpdatedAt, Status | ProductId, MinQuantity, MaxQuantity |
 | Top Products | - | Fixed: TotalRevenue DESC | StartDate, EndDate |
 | Top Customers | - | Fixed: TotalSpent DESC | StartDate, EndDate |
 
