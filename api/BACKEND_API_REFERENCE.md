@@ -1015,7 +1015,7 @@ interface OrderSearchRequest {
   sortDesc?: boolean;
 
   // Filters
-  status?: string;        // "Pending" | "Paid" | "Cancelled"
+  status?: string;        // | "Paid" | "Cancelled"
   customerId?: number;
   userId?: number;        // Staff ID
   startDate?: string;     // ISO 8601 DateTime
@@ -2870,5 +2870,4 @@ Tài liệu này cung cấp **TẤT CẢ** thông tin cần thiết để fronte
 **Tổng cộng: 52 endpoints**
 
 **Nếu có thắc mắc hoặc cần thêm thông tin, vui lòng liên hệ Backend Team!** 🚀
-
 
