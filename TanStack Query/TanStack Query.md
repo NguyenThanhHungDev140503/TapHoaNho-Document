@@ -17,6 +17,31 @@
 
 **TanStack Query** (trước đây là React Query) là một thư viện quản lý trạng thái server-state mạnh mẽ cho các ứng dụng web hiện đại. Được phát triển bởi Tanner Linsley và đội ngũ TanStack, nó giúp đơn giản hóa việc fetching, caching, synchronizing và updating server state trong React applications.
 
+### Thông Tin Version
+
+- **Package Name**: `@tanstack/react-query` (chính xác và mới nhất)
+- **Version Hiện Tại**: v5.90+ (Latest)
+- **DevTools Package**: `@tanstack/react-query-devtools`
+- **Framework Support**: React, Vue, Solid, Svelte, Angular
+
+### Thay Đổi Quan Trọng trong v5
+
+Nếu bạn đang migrate từ v4, cần lưu ý các thay đổi sau:
+
+1. **`cacheTime` → `gcTime`**: Đổi tên để rõ ràng hơn về mục đích (garbage collection)
+2. **`isLoading` vs `isPending`**: 
+   - `isPending`: true khi query chưa có data
+   - `isLoading`: true khi `isPending && isFetching` (thay thế `isInitialLoading`)
+3. **Object Signature Bắt Buộc**: Tất cả hooks phải dùng object syntax
+   ```typescript
+   // v4 (deprecated)
+   useQuery(key, fn, options)
+   
+   // v5 (required)
+   useQuery({ queryKey, queryFn, ...options })
+   ```
+4. **`context` → `queryClient`**: Thay đổi cách pass custom query client
+
 ### Tại sao sử dụng TanStack Query?
 
 **Vấn đề truyền thống:**
@@ -41,7 +66,7 @@
 3. **Query Keys**: Unique identifiers cho queries
 4. **Cache**: Lưu trữ data đã fetch
 5. **Stale Time**: Thời gian data được coi là "fresh"
-6. **Cache Time**: Thời gian data được giữ trong cache
+6. **gcTime** (Garbage Collection Time): Thời gian data được giữ trong cache sau khi không còn observers (trước đây là `cacheTime` trong v4)
 
 ### TanStack Ecosystem
 
@@ -162,7 +187,8 @@ export function PostsList() {
   const {
     data,           // Data trả về từ queryFn
     error,          // Error object nếu có lỗi
-    isLoading,      // true khi đang fetch lần đầu
+    isPending,      // true khi query chưa có data (v5)
+    isLoading,      // true khi isPending && isFetching (đang fetch lần đầu)
     isError,        // true khi có error
     isFetching,     // true khi đang fetch (bao gồm cả background refetch)
     isSuccess,      // true khi fetch thành công
@@ -180,6 +206,7 @@ export function PostsList() {
   })
 
   // Hiển thị loading state
+  // Trong v5, có thể dùng isLoading (isPending && isFetching) hoặc isPending
   if (isLoading) {
     return <div>Đang tải danh sách bài viết...</div>
   }
@@ -221,9 +248,11 @@ export function PostsList() {
    - Phải return Promise
    - Nếu throw error, query sẽ chuyển sang error state
 
-3. **isLoading vs isFetching**:
-   - `isLoading`: true chỉ khi fetch lần đầu và chưa có cached data
+3. **isPending vs isLoading vs isFetching** (v5):
+   - `isPending`: true khi query chưa có data (initial state hoặc disabled query)
+   - `isLoading`: true khi `isPending && isFetching` (đang fetch lần đầu, chưa có data)
    - `isFetching`: true khi đang fetch (bao gồm cả background refetch)
+   - **Lưu ý**: Trong v5, `isLoading` = `isPending && isFetching`, thay thế cho `isInitialLoading` (deprecated)
 
 4. **Automatic Caching**:
    - Data được cache tự động với queryKey
@@ -255,7 +284,7 @@ interface PostDetailProps {
 }
 
 export function PostDetail({ postId }: PostDetailProps) {
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isPending, isLoading, isError, error } = useQuery({
     // queryKey bao gồm postId để tạo unique key cho mỗi post
     // Khi postId thay đổi, query sẽ tự động refetch
     queryKey: ['post', postId],
@@ -272,7 +301,9 @@ export function PostDetail({ postId }: PostDetailProps) {
     return <div>Vui lòng chọn một bài viết</div>
   }
 
-  if (isLoading) {
+  // isPending: true khi query disabled hoặc chưa có data
+  // isLoading: true khi đang fetch lần đầu (isPending && isFetching)
+  if (isPending || isLoading) {
     return <div>Đang tải bài viết...</div>
   }
 
@@ -1717,6 +1748,8 @@ export function setupQueryMonitoring(queryClient: QueryClient) {
 - **TanStack Query Official Docs**: https://tanstack.com/query/latest
 - **React Query v5 Migration Guide**: https://tanstack.com/query/latest/docs/react/guides/migrating-to-v5
 - **API Reference**: https://tanstack.com/query/latest/docs/react/reference/useQuery
+- **Installation Guide**: https://tanstack.com/query/latest/docs/framework/react/installation
+- **Important Defaults**: https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults
 
 ### Community Resources
 - **TanStack Query GitHub**: https://github.com/TanStack/query
@@ -1788,8 +1821,8 @@ TanStack Query là một thư viện mạnh mẽ giúp quản lý server state t
 ---
 
 **Tài liệu được tạo bởi:** AI Assistant
-**Ngày tạo:** 2025-11-10
-**Version:** TanStack Query v5
+**Ngày cập nhật:** 2025-01-27
+**Version:** TanStack Query v5.90+ (Latest)
 **Ngôn ngữ:** Tiếng Việt với TypeScript examples
 ```
 

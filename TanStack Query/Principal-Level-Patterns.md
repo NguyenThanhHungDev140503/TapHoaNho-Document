@@ -1,5 +1,11 @@
 # TanStack Query - Principal Level Patterns
 
+> **Version**: TanStack Query v5.90+ (Latest)  
+> **Package**: `@tanstack/react-query`  
+> **Last Updated**: 2025-01-27
+
+---
+
 ## 1. Enterprise-Scale Query Management
 
 ### Centralized API Client với Interceptors

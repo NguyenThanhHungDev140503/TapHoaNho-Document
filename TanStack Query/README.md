@@ -4,6 +4,8 @@ Tài liệu toàn diện về TanStack Query (React Query) từ cơ bản đến
 
 ## 📚 Cấu Trúc Tài Liệu
 
+> **Lưu ý**: Tất cả tài liệu đã được cập nhật với thông tin mới nhất từ TanStack Query v5.90+. Xem `RESEARCH_SUMMARY.md` để biết chi tiết về nguồn tham khảo và xác nhận tính chính xác.
+
 ### 1. **TanStack Query.md** (File Chính)
 Tài liệu chính bao gồm:
 - **Junior Level**: Cơ bản về TanStack Query
@@ -51,6 +53,14 @@ Enterprise patterns cho Principal/Staff engineers:
 - Production monitoring và metrics
 - Advanced error recovery
 - Best practices summary
+
+### 4. **RESEARCH_SUMMARY.md**
+Tài liệu nghiên cứu và nguồn tham khảo:
+- Thông tin version và package chính xác
+- Breaking changes từ v4 → v5
+- Nguồn tham khảo chính thức
+- Xác nhận tính chính xác của tài liệu
+- Changelog chi tiết
 
 ## 🎯 Cách Sử Dụng Tài Liệu
 
@@ -160,10 +170,11 @@ function App() {
 
 ## 📝 Notes
 
-- **Version**: TanStack Query v5
+- **Version**: TanStack Query v5.90+ (Latest)
+- **Package**: `@tanstack/react-query` (chính xác và mới nhất)
 - **Language**: Tiếng Việt
 - **Code**: TypeScript
-- **Last Updated**: 2025-11-10
+- **Last Updated**: 2025-01-27
 
 ## 🤝 Contributing
 

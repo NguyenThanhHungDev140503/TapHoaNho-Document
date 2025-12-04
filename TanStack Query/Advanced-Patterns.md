@@ -1,5 +1,11 @@
 # TanStack Query - Advanced Patterns (Senior & Principal Level)
 
+> **Version**: TanStack Query v5.90+ (Latest)  
+> **Package**: `@tanstack/react-query`  
+> **Last Updated**: 2025-01-27
+
+---
+
 ## Senior Level - Nâng Cao (tiếp theo)
 
 ### 2. Custom Query Client Configuration
