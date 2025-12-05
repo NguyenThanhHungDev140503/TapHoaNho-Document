@@ -2,10 +2,17 @@ app# 📚 TÀI LIỆU THAM KHẢO API BACKEND
 
 > **Tài liệu đầy đủ về tất cả endpoints của Backend API**
 > 
-> **Phiên bản:** 1.0  
+> **Phiên bản:** 1.1  
 > **Ngày cập nhật:** 2025-01-09  
 > **Backend Framework:** ASP.NET Core 9.0  
 > **Database:** PostgreSQL (Neon)
+> 
+> **Cập nhật lần này:**
+> - ✅ Bổ sung thông tin về Query Parameters Naming Convention (PascalCase)
+> - ✅ Bổ sung thông tin về Request Validation Rules (additionalProperties: false)
+> - ✅ Làm rõ sự khác biệt giữa Nullable vs Optional Fields
+> - ✅ Bổ sung đầy đủ min/max constraints vào Validation Rules
+> - ✅ Ghi chú về Promotions Status filter chưa được triển khai
 
 ---
 
@@ -25,6 +32,11 @@ app# 📚 TÀI LIỆU THAM KHẢO API BACKEND
 12. [TypeScript Interfaces](#12-typescript-interfaces)
 13. [Error Handling](#13-error-handling)
 14. [Quick Reference](#14-quick-reference)
+
+**⚠️ LƯU Ý QUAN TRỌNG:**
+- Xem [Query Parameters Naming Convention](#17-query-parameters-naming-convention) để biết cách sử dụng PascalCase
+- Xem [Request Validation Rules](#18-request-validation-rules) để biết về `additionalProperties: false`
+- Xem [Nullable vs Optional Fields](#19-nullable-vs-optional-fields) để hiểu sự khác biệt
 
 ---
 
@@ -126,6 +138,114 @@ interface PagedList<T> {
 | Admin | 0 | Toàn quyền truy cập tất cả endpoints |
 | Staff | 1 | Truy cập giới hạn (Customers, Orders, Inventory) |
 
+### 1.7. Query Parameters Naming Convention
+
+**⚠️ QUAN TRỌNG:** Backend API sử dụng **PascalCase** cho tất cả query parameters.
+
+**Ví dụ:**
+- ✅ Đúng: `Page`, `PageSize`, `Search`, `SortBy`, `SortDesc`, `CategoryId`, `MinPrice`
+- ❌ Sai: `page`, `pageSize`, `search`, `sortBy`, `sortDesc`, `categoryId`, `minPrice`
+
+**Lưu ý khi implement TypeScript:**
+- TypeScript interfaces có thể sử dụng camelCase để tuân theo convention của TypeScript
+- Khi gọi API, **PHẢI** convert sang PascalCase trong query parameters
+- Ví dụ mapping:
+
+```typescript
+// TypeScript interface (camelCase - internal)
+interface ProductSearchRequest {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sortBy?: string;
+  sortDesc?: boolean;
+  categoryId?: number;
+  minPrice?: number;
+}
+
+// Khi gọi API (PascalCase - external)
+const response = await axios.get('/api/admin/products', {
+  params: {
+    Page: request.page,           // Convert camelCase → PascalCase
+    PageSize: request.pageSize,
+    Search: request.search,
+    SortBy: request.sortBy,
+    SortDesc: request.sortDesc,
+    CategoryId: request.categoryId,
+    MinPrice: request.minPrice
+  }
+});
+```
+
+**Hoặc sử dụng helper function:**
+```typescript
+function toPascalCaseParams(params: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
+      result[pascalKey] = value;
+    }
+  }
+  return result;
+}
+```
+
+### 1.8. Request Validation Rules
+
+**⚠️ QUAN TRỌNG:** Tất cả request schemas có `additionalProperties: false`, nghĩa là:
+
+- Backend sẽ **reject** request nếu có thêm properties không được định nghĩa trong schema
+- Chỉ gửi các properties được định nghĩa trong interface
+- Không được gửi thêm properties tùy ý
+
+**Ví dụ:**
+```typescript
+// ✅ Đúng - chỉ gửi các properties được định nghĩa
+const request = {
+  categoryId: 1,
+  supplierId: 2,
+  productName: 'Coca Cola',
+  barcode: '123456',
+  price: 15000,
+  unit: 'can'
+};
+
+// ❌ Sai - có thêm property không được định nghĩa
+const request = {
+  categoryId: 1,
+  supplierId: 2,
+  productName: 'Coca Cola',
+  barcode: '123456',
+  price: 15000,
+  unit: 'can',
+  extraField: 'value'  // ❌ Backend sẽ reject request này
+};
+```
+
+### 1.9. Nullable vs Optional Fields
+
+**Sự khác biệt:**
+- **Optional (`?`):** Field có thể không gửi trong request (không có trong object)
+- **Nullable (`| null`):** Field có thể gửi giá trị `null` trong request
+
+**Ví dụ:**
+```typescript
+interface CreateCustomerRequest {
+  name: string;           // Required
+  phone: string;          // Required
+  email?: string | null;   // Optional AND nullable - có thể không gửi hoặc gửi null
+  address?: string | null; // Optional AND nullable
+}
+
+// ✅ Tất cả đều hợp lệ:
+{ name: 'John', phone: '123' }                    // email và address không gửi
+{ name: 'John', phone: '123', email: null }      // email = null
+{ name: 'John', phone: '123', email: 'test@example.com' } // email có giá trị
+```
+
+**Lưu ý:** Trong tài liệu này, `field?: type` thường có nghĩa là "optional và có thể nullable" (`field?: type | null`).
+
 ---
 
 ## 2. AUTHENTICATION MODULE
@@ -222,10 +342,10 @@ interface CreateUserRequest {
 
 #### Validation Rules
 
-- `username`: Required, max 50 characters
-- `password`: Required, min 6 characters
-- `fullName`: Required, max 100 characters
-- `role`: Required, 0 (Admin) hoặc 1 (Staff)
+- `username`: Required, string, min 1 character, max 50 characters
+- `password`: Required, string, min 6 characters
+- `fullName`: Required, string, min 1 character, max 100 characters
+- `role`: Required, integer, minimum 0, maximum 1 (0: Admin, 1: Staff)
 
 #### Response
 
@@ -495,12 +615,12 @@ interface CreateProductRequest {
 
 #### Validation Rules
 
-- `categoryId`: Required, phải tồn tại trong database
-- `supplierId`: Required, phải tồn tại trong database
-- `productName`: Required, max 100 characters
-- `barcode`: Required, max 50 characters, **unique** (không được trùng)
-- `price`: Required, phải > 0
-- `unit`: Required, max 20 characters, default "pcs"
+- `categoryId`: Required, integer, phải tồn tại trong database
+- `supplierId`: Required, integer, phải tồn tại trong database
+- `productName`: Required, string, min 1 character, max 100 characters
+- `barcode`: Required, string, min 1 character, max 50 characters, **unique** (không được trùng)
+- `price`: Required, number (double), minimum 0.01 (phải > 0)
+- `unit`: Required, string, min 1 character, max 20 characters, default "pcs"
 
 #### Response
 
@@ -754,7 +874,7 @@ interface CreateCategoryRequest {
 
 #### Validation Rules
 
-- `categoryName`: Required, max 100 characters
+- `categoryName`: Required, string, min 1 character, max 100 characters
 
 ---
 
@@ -865,10 +985,10 @@ interface CreateCustomerRequest {
 
 #### Validation Rules
 
-- `name`: Required, max 100 characters
-- `phone`: Required, max 20 characters
-- `email`: Optional, must be valid email format, max 100 characters
-- `address`: Optional, max 255 characters
+- `name`: Required, string, min 1 character, max 100 characters
+- `phone`: Required, string, min 1 character, max 20 characters
+- `email`: Optional, nullable, string, max 100 characters, must be valid email format
+- `address`: Optional, nullable, string, max 255 characters
 
 ---
 
@@ -1110,11 +1230,11 @@ interface OrderItemInput {
 
 #### Validation Rules
 
-- `customerId`: Required, phải tồn tại
-- `promoCode`: Optional, max 50 characters, phải valid và active
-- `orderItems`: Required, phải có ít nhất 1 item
-- `orderItems[].productId`: Required, phải tồn tại
-- `orderItems[].quantity`: Required, phải > 0
+- `customerId`: Required, integer, phải tồn tại trong database
+- `promoCode`: Optional, nullable, string, max 50 characters, phải valid và active nếu được cung cấp
+- `orderItems`: Required, array, min 1 item (minItems: 1)
+- `orderItems[].productId`: Required, integer, phải tồn tại trong database
+- `orderItems[].quantity`: Required, integer, minimum 1, maximum 2147483647 (phải > 0)
 
 #### Response
 
@@ -1170,7 +1290,7 @@ interface UpdateOrderStatusRequest {
 
 #### Validation Rules
 
-- `status`: Required, phải là "paid" hoặc "canceled" (lowercase)
+- `status`: Required, string, min 1 character, pattern: `^(paid|canceled)$` (lowercase)
 
 ---
 
@@ -1183,10 +1303,15 @@ interface UpdateOrderStatusRequest {
 
 ```typescript
 interface AddOrderItemRequest {
-  productId: number;  // Required
-  quantity: number;   // Required, > 0
+  productId: number;  // Required, integer
+  quantity: number;   // Required, integer, minimum 1, maximum 2147483647
 }
 ```
+
+#### Validation Rules
+
+- `productId`: Required, integer, phải tồn tại trong database
+- `quantity`: Required, integer, minimum 1, maximum 2147483647
 
 #### Response
 
@@ -1213,9 +1338,13 @@ interface OrderItemResponseDto {
 
 ```typescript
 interface UpdateOrderItemRequest {
-  quantity: number;  // Required, > 0
+  quantity: number;  // Required, integer, minimum 1, maximum 2147483647
 }
 ```
+
+#### Validation Rules
+
+- `quantity`: Required, integer, minimum 1, maximum 2147483647
 
 ---
 
@@ -1279,9 +1408,12 @@ interface PromotionSearchRequest {
   sortDesc?: boolean;
 
   // Filters
-  status?: string;        // "active" | "inactive"
+  // ⚠️ LƯU Ý: Filter Status chưa được backend triển khai, cần thực hiện triển khai
+  // status?: string;        // "active" | "inactive" - CHƯA ĐƯỢC HỖ TRỢ
 }
 ```
+
+**⚠️ Lưu ý:** Query parameter `Status` để lọc theo trạng thái promotion hiện tại **chưa được backend triển khai**. Cần thực hiện triển khai tính năng này trong backend trước khi sử dụng.
 
 #### Allowed SortBy Values
 
@@ -1362,15 +1494,15 @@ interface CreatePromotionRequest {
 
 #### Validation Rules
 
-- `promoCode`: Required, max 50 characters
-- `description`: Optional, max 255 characters
-- `discountType`: Required, phải là "percent" hoặc "fixed"
-- `discountValue`: Required, phải > 0
-- `startDate`: Required, ISO 8601 DateTime
-- `endDate`: Required, ISO 8601 DateTime, phải sau startDate
-- `minOrderAmount`: Optional, >= 0, default 0
-- `usageLimit`: Optional, >= 1, default 1
-- `status`: Required, "active" hoặc "inactive"
+- `promoCode`: Required, string, min 1 character, max 50 characters
+- `description`: Optional, nullable, string, max 255 characters
+- `discountType`: Required, string, min 1 character, pattern: `^(percent|fixed)$`
+- `discountValue`: Required, number (double), minimum 0.01 (phải > 0)
+- `startDate`: Required, string, ISO 8601 DateTime format
+- `endDate`: Required, string, ISO 8601 DateTime format, phải sau startDate
+- `minOrderAmount`: Optional, number (double), minimum 0, default 0
+- `usageLimit`: Optional, integer, minimum 1, maximum 2147483647, default 1
+- `status`: Required, string, min 1 character, pattern: `^(active|inactive)$`
 
 ---
 
@@ -1415,10 +1547,15 @@ interface UpdatePromotionRequest {
 
 ```typescript
 interface ValidatePromoRequest {
-  promoCode: string;   // Required
-  orderAmount: number; // Required, > 0
+  promoCode: string;   // Required, min 1 character
+  orderAmount: number; // Required, number (double), minimum 0.01
 }
 ```
+
+#### Validation Rules
+
+- `promoCode`: Required, string, min 1 character
+- `orderAmount`: Required, number (double), minimum 0.01 (phải > 0)
 
 #### Response
 
@@ -1551,10 +1688,10 @@ interface CreateUserRequest {
 
 #### Validation Rules
 
-- `username`: Required, max 50 characters, unique
-- `password`: Required, min 6 characters
-- `fullName`: Required, max 100 characters
-- `role`: Required, 0 (Admin) hoặc 1 (Staff)
+- `username`: Required, string, min 1 character, max 50 characters, unique
+- `password`: Required, string, min 6 characters
+- `fullName`: Required, string, min 1 character, max 100 characters
+- `role`: Required, integer, minimum 0, maximum 1 (0: Admin, 1: Staff)
 
 ---
 
@@ -1577,7 +1714,11 @@ interface UpdateUserRequest {
 
 #### Validation Rules
 
-- `password`: Optional, nếu null hoặc empty string thì không đổi password
+- `id`: Required, integer, phải khớp với path parameter
+- `username`: Required, string, min 1 character, max 50 characters
+- `password`: Optional, nullable, string, max 255 characters - nếu null hoặc empty string thì không đổi password
+- `fullName`: Required, string, min 1 character, max 100 characters
+- `role`: Required, integer, minimum 0, maximum 1 (0: Admin, 1: Staff)
 
 ---
 
@@ -1664,8 +1805,8 @@ interface UpdateInventoryRequest {
 
 #### Validation Rules
 
-- `quantityChange`: Required, có thể âm (giảm) hoặc dương (tăng)
-- `reason`: Required, max 255 characters
+- `quantityChange`: Required, integer (int32), có thể âm (giảm) hoặc dương (tăng)
+- `reason`: Required, string, min 1 character, max 255 characters
 
 #### Example Request
 
@@ -2154,18 +2295,18 @@ export interface CategoryResponseDto {
 export interface CustomerSearchRequest extends PagedRequest {}
 
 export interface CreateCustomerRequest {
-  name: string;
-  phone: string;
-  email?: string;
-  address?: string;
+  name: string;              // Required, min 1, max 100 chars
+  phone: string;             // Required, min 1, max 20 chars
+  email?: string | null;     // Optional, nullable, max 100 chars, email format
+  address?: string | null;   // Optional, nullable, max 255 chars
 }
 
 export interface UpdateCustomerRequest {
-  id: number;
-  name: string;
-  phone: string;
-  email?: string;
-  address?: string;
+  id: number;                // Required, integer
+  name: string;              // Required, min 1, max 100 chars
+  phone: string;             // Required, min 1, max 20 chars
+  email?: string | null;     // Optional, nullable, max 100 chars, email format
+  address?: string | null;   // Optional, nullable, max 255 chars
 }
 
 export interface CustomerListDto {
@@ -2198,18 +2339,18 @@ export interface CustomerResponseDto {
 export interface SupplierSearchRequest extends PagedRequest {}
 
 export interface CreateSupplierRequest {
-  name: string;
-  phone: string;
-  email?: string;
-  address?: string;
+  name: string;              // Required, min 1, max 100 chars
+  phone: string;             // Required, min 1, max 20 chars
+  email?: string | null;     // Optional, nullable, max 100 chars
+  address?: string | null;   // Optional, nullable, max 255 chars
 }
 
 export interface UpdateSupplierRequest {
-  id: number;
-  name: string;
-  phone: string;
-  email?: string;
-  address?: string;
+  id: number;                // Required, integer
+  name: string;              // Required, min 1, max 100 chars
+  phone: string;             // Required, min 1, max 20 chars
+  email?: string | null;     // Optional, nullable, max 100 chars
+  address?: string | null;   // Optional, nullable, max 255 chars
 }
 
 export interface SupplierResponseDto {
@@ -2238,14 +2379,14 @@ export interface OrderSearchRequest extends PagedRequest {
 }
 
 export interface CreateOrderRequest {
-  customerId: number;
-  promoCode?: string;
-  orderItems: OrderItemInput[];
+  customerId: number;        // Required, integer
+  promoCode?: string | null; // Optional, nullable, max 50 chars
+  orderItems: OrderItemInput[]; // Required, min 1 item
 }
 
 export interface OrderItemInput {
-  productId: number;
-  quantity: number;
+  productId: number;  // Required, integer
+  quantity: number;   // Required, integer, min 1, max 2147483647
 }
 
 export interface UpdateOrderStatusRequest {
@@ -2253,12 +2394,12 @@ export interface UpdateOrderStatusRequest {
 }
 
 export interface AddOrderItemRequest {
-  productId: number;
-  quantity: number;
+  productId: number;  // Required, integer
+  quantity: number;   // Required, integer, min 1, max 2147483647
 }
 
 export interface UpdateOrderItemRequest {
-  quantity: number;
+  quantity: number;  // Required, integer, min 1, max 2147483647
 }
 
 export interface OrderListDto {
@@ -2320,37 +2461,38 @@ export interface OrderItemResponseDto {
 // ============================================
 
 export interface PromotionSearchRequest extends PagedRequest {
-  status?: string;  // "active" | "inactive"
+  // ⚠️ LƯU Ý: Filter Status chưa được backend triển khai, cần thực hiện triển khai
+  // status?: string;  // "active" | "inactive" - CHƯA ĐƯỢC HỖ TRỢ
 }
 
 export interface CreatePromotionRequest {
-  promoCode: string;
-  description?: string;
-  discountType: string;      // "percent" | "fixed"
-  discountValue: number;
-  startDate: string;
-  endDate: string;
-  minOrderAmount?: number;
-  usageLimit?: number;
+  promoCode: string;        // Required, min 1, max 50 chars
+  description?: string | null; // Optional, nullable, max 255 chars
+  discountType: string;      // Required, "percent" | "fixed"
+  discountValue: number;     // Required, min 0.01
+  startDate: string;         // Required, ISO 8601 DateTime
+  endDate: string;           // Required, ISO 8601 DateTime
+  minOrderAmount?: number;   // Optional, min 0, default 0
+  usageLimit?: number;       // Optional, min 1, max 2147483647, default 1
   status: string;            // Required, "active" | "inactive"
 }
 
 export interface UpdatePromotionRequest {
-  id: number;
-  promoCode: string;
-  description?: string;
-  discountType: string;
-  discountValue: number;
-  startDate: string;
-  endDate: string;
-  minOrderAmount?: number;
-  usageLimit?: number;
+  id: number;                // Required, integer
+  promoCode: string;         // Required, min 1, max 50 chars
+  description?: string | null; // Optional, nullable, max 255 chars
+  discountType: string;       // Required, "percent" | "fixed"
+  discountValue: number;     // Required, min 0.01
+  startDate: string;         // Required, ISO 8601 DateTime
+  endDate: string;           // Required, ISO 8601 DateTime
+  minOrderAmount?: number;   // Optional, min 0, default 0
+  usageLimit?: number;        // Optional, min 1, max 2147483647, default 1
   status: string;            // Required, "active" | "inactive"
 }
 
 export interface ValidatePromoRequest {
-  promoCode: string;
-  orderAmount: number;
+  promoCode: string;   // Required, min 1 character
+  orderAmount: number; // Required, min 0.01
 }
 
 export interface ValidatePromoResponse {
@@ -2409,11 +2551,11 @@ export interface CreateUserRequest {
 }
 
 export interface UpdateUserRequest {
-  id: number;
-  username: string;
-  password?: string;  // null = không đổi password
-  fullName: string;
-  role: number;
+  id: number;                // Required, integer
+  username: string;          // Required, min 1, max 50 chars
+  password?: string | null;  // Optional, nullable, max 255 chars - null = không đổi password
+  fullName: string;          // Required, min 1, max 100 chars
+  role: number;              // Required, 0 (Admin) or 1 (Staff)
 }
 
 export interface UserResponseDto {

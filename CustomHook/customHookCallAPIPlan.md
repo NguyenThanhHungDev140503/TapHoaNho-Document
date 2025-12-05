@@ -8,12 +8,32 @@ Tài liệu **CustomHookAPIFactory.md** mô tả một hệ thống **Universal 
 
 ### Các thành phần chính:
 
-1. **ApiService Class** (`apiFactory.ts`):
-   - Class generic để xử lý CRUD operations
-   - Hỗ trợ: GET all, GET by ID, CREATE, UPDATE, PATCH, DELETE
-   - Custom method cho các endpoint đặc biệt
+1. **ApiServiceInterface** (`src/lib/api/base/ApiServiceInterface.ts`):
+   - Định nghĩa contract chung cho tất cả API services
+   - Methods chuẩn: `getAll`, `getPaginated`, `getById`, `create`, `update`, `patch`, `delete`, `custom`
+   - Generic theo `TData`, `TCreate`, `TUpdate`
 
-2. **Universal CRUD Hooks** (`useApi.ts`):
+2. **BaseApiService Class** (`src/lib/api/base/BaseApiService.ts`):
+   - Class generic implement `ApiServiceInterface`
+   - Hỗ trợ CRUD chuẩn + `getPaginated` + `custom`
+   - Xử lý `ApiResponse<T>` wrapper (unwrap `data`, check `isError`)
+   - Xử lý `PagedList<T>` cho pagination
+   - Sử dụng `axiosClient` từ `src/lib/axios.ts`
+
+3. **apiResponseAdapter** (`src/lib/api/base/apiResponseAdapter.ts`):
+   - Utility functions cho xử lý `ApiResponse`:
+     - `unwrapResponse<T>(response: ApiResponse<T>): T`
+     - `handleApiError(error: unknown): never`
+   - Có thể được dùng trực tiếp trong `BaseApiService` và các chỗ cần thao tác với `ApiResponse` thô
+
+4. **API Types** (`src/lib/api/types/api.types.ts`):
+   - Re-export `ApiResponse`, `PagedList`, `PagedRequest` từ `src/lib/axios.ts`
+   - Định nghĩa thêm:
+     - `ApiConfig<TData, TCreate, TUpdate>`
+     - `QueryParams` (Record<string, any>)
+   - Mục tiêu: gom nhóm tất cả API-related types vào một nơi
+
+5. **Universal CRUD Hooks** (`useApi.ts`):
    - `useApiList` - GET danh sách
    - `useApiDetail` - GET chi tiết theo ID
    - `useApiCreate` - CREATE
@@ -23,11 +43,11 @@ Tài liệu **CustomHookAPIFactory.md** mô tả một hệ thống **Universal 
    - `useApiCustomQuery` - Custom queries
    - `useApiCustomMutation` - Custom mutations
 
-3. **Query Key Factory**:
+6. **Query Key Factory**:
    - Tạo query keys có cấu trúc nhất quán
    - Hỗ trợ cache invalidation tự động
 
-4. **Tính năng nâng cao**:
+7. **Tính năng nâng cao**:
    - Optimistic updates
    - Pagination support
    - Automatic cache management
@@ -96,10 +116,43 @@ export interface PagedList<T> {
 - `PATCH /api/admin/{entity}/{id}` - Partial update (⚠️ CHỈ Orders và Inventory)
 
 **Query Parameters Naming**:
-- ✅ Backend examples sử dụng **PascalCase**: `Page`, `PageSize`, `Search`, `SortBy`, `SortDesc`
-- ✅ Frontend TypeScript interfaces sử dụng **camelCase**: `page`, `pageSize`, `search`, `sortBy`, `sortDesc`
-- ✅ Axios gửi query params dưới dạng **lowercase** trong URL: `?page=1&pagesize=20`
-- ✅ ASP.NET Core Model Binding **case-insensitive**, tự động bind `page` → `Page`
+- ⚠️ **QUAN TRỌNG**: Backend API sử dụng **PascalCase** cho tất cả query parameters: `Page`, `PageSize`, `Search`, `SortBy`, `SortDesc`, `CategoryId`, `MinPrice`, etc.
+- ✅ Frontend TypeScript interfaces sử dụng **camelCase**: `page`, `pageSize`, `search`, `sortBy`, `sortDesc` (tuân theo TypeScript convention)
+- ⚠️ **Cần convert**: Khi gọi API, phải convert camelCase → PascalCase trong query parameters
+- ✅ ASP.NET Core Model Binding **case-insensitive**, nhưng để đảm bảo consistency và tránh lỗi, nên gửi đúng PascalCase
+
+**Ví dụ conversion**:
+```typescript
+// TypeScript interface (camelCase - internal)
+interface ProductSearchRequest {
+  page?: number;
+  pageSize?: number;
+  categoryId?: number;
+}
+
+// Khi gọi API (PascalCase - external)
+const response = await axios.get('/api/admin/products', {
+  params: {
+    Page: request.page,           // Convert camelCase → PascalCase
+    PageSize: request.pageSize,
+    CategoryId: request.categoryId
+  }
+});
+```
+
+**Helper function để convert**:
+```typescript
+function toPascalCaseParams(params: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
+      result[pascalKey] = value;
+    }
+  }
+  return result;
+}
+```
 
 **Response Wrapper**: Tất cả responses đều wrap trong `ApiResponse<T>`
 ```typescript
@@ -114,8 +167,9 @@ interface ApiResponse<T> {
 
 **PATCH Endpoints** (CHỈ 2 endpoints):
 - ✅ **Orders**: `PATCH /api/admin/orders/{id}/status`
-  - Request: `{ status: "Pending" | "Paid" | "Cancelled" }`
+  - Request: `{ status: "paid" | "canceled" }` - ⚠️ **QUAN TRỌNG**: Phải dùng lowercase "paid" hoặc "canceled" (không phải "Paid" hay "Cancelled")
   - Response: `ApiResponse<OrderResponseDto>`
+  - **Lưu ý**: Khi search/filter orders, có thể dùng "Pending" | "Paid" | "Cancelled" (PascalCase), nhưng khi update status phải dùng lowercase
 
 - ✅ **Inventory**: `PATCH /api/admin/inventory/{productId}`
   - Request: `{ quantityChange: number, reason: string }`
@@ -138,7 +192,9 @@ src/
 │   └── useApi.ts      # Universal CRUD hooks
 ├── lib/
 │   ├── axios.ts       # Đã có
-│   ├── apiFactory.ts  # Mới - ApiService class
+│   └── api/
+│       └── base/
+│           └── BaseApiService.ts  # Base class với CRUD cơ bản
 │   └── queryClient.ts # Mới - QueryClient config
 ```
 
@@ -150,573 +206,7 @@ src/
 
 ## 4. Code Implementation
 
-### 4.1. Cài đặt Dependencies
 
-```bash
-cd shiny-carnival/frontend
-yarn add @tanstack/react-query @tanstack/react-query-devtools
-```
-
-### 4.2. ApiFactory Class (`src/lib/apiFactory.ts`)
-
-```typescript
-// shiny-carnival/frontend/src/lib/apiFactory.ts
-import type { AxiosInstance } from 'axios';
-import type { ApiResponse, PagedList, PagedRequest } from './axios';
-
-/**
- * Cấu hình cho ApiService
- */
-export interface ApiConfig<TData = any, TCreate = any, TUpdate = any> {
-  endpoint: string;
-  axiosInstance: AxiosInstance;
-}
-
-/**
- * Query parameters cho API requests
- */
-export interface QueryParams {
-  [key: string]: any;
-}
-
-/**
- * Universal API Service Class
- * Cung cấp các phương thức CRUD chuẩn cho mọi entity
- * 
- * @template TData - Type của entity data
- * @template TCreate - Type của create request
- * @template TUpdate - Type của update request
- */
-export class ApiService<TData = any, TCreate = any, TUpdate = any> {
-  private endpoint: string;
-  private axios: AxiosInstance;
-
-  constructor(config: ApiConfig<TData, TCreate, TUpdate>) {
-    this.endpoint = config.endpoint;
-    this.axios = config.axiosInstance;
-  }
-
-  /**
-   * GET all - Lấy danh sách với query params
-   * Backend: GET /api/admin/{entity}
-   */
-  async getAll(params?: QueryParams): Promise<TData[]> {
-    const response = await this.axios.get<ApiResponse<TData[]>>(
-      this.endpoint,
-      { params }
-    );
-    // Backend wraps response trong ApiResponse<T>
-    return response.data.data || [];
-  }
-
-  /**
-   * GET all with pagination - Lấy danh sách có phân trang
-   * Backend: GET /api/admin/{entity}?page=1&pageSize=20&search=...
-   */
-  async getAllPaged(params?: PagedRequest): Promise<PagedList<TData>> {
-    const response = await this.axios.get<ApiResponse<PagedList<TData>>>(
-      this.endpoint,
-      { params }
-    );
-    // Backend wraps PagedList trong ApiResponse<PagedList<T>>
-    return response.data.data || {
-      page: 1,
-      pageSize: 10,
-      totalCount: 0,
-      totalPages: 0,
-      hasPrevious: false,
-      hasNext: false,
-      items: []
-    };
-  }
-
-  /**
-   * GET by ID - Lấy chi tiết theo ID
-   * Backend: GET /api/admin/{entity}/{id}
-   */
-  async getById(id: string | number): Promise<TData> {
-    const response = await this.axios.get<ApiResponse<TData>>(
-      `${this.endpoint}/${id}`
-    );
-    // Backend wraps data trong ApiResponse<T>
-    if (!response.data.data) {
-      throw new Error(response.data.message || 'Data not found');
-    }
-    return response.data.data;
-  }
-
-  /**
-   * POST - Tạo mới
-   * Backend: POST /api/admin/{entity}
-   */
-  async create(data: TCreate): Promise<TData> {
-    const response = await this.axios.post<ApiResponse<TData>>(
-      this.endpoint,
-      data
-    );
-    // Backend wraps created data trong ApiResponse<T>
-    if (!response.data.data) {
-      throw new Error(response.data.message || 'Create failed');
-    }
-    return response.data.data;
-  }
-
-  /**
-   * PUT - Cập nhật toàn bộ (full replacement)
-   * Backend: PUT /api/admin/{entity}/{id}
-   * ⚠️ Yêu cầu gửi TẤT CẢ fields, không chỉ fields thay đổi
-   */
-  async update(id: string | number, data: TUpdate): Promise<TData> {
-    const response = await this.axios.put<ApiResponse<TData>>(
-      `${this.endpoint}/${id}`,
-      data
-    );
-    // Backend wraps updated data trong ApiResponse<T>
-    if (!response.data.data) {
-      throw new Error(response.data.message || 'Update failed');
-    }
-    return response.data.data;
-  }
-
-  /**
-   * PATCH - Cập nhật một phần (partial update)
-   * Backend: PATCH /api/admin/{entity}/{id}
-   * ⚠️ CHỈ hỗ trợ cho Orders và Inventory!
-   *
-   * Orders: PATCH /api/admin/orders/{id}/status
-   * Inventory: PATCH /api/admin/inventory/{productId}
-   *
-   * Các entities khác (Products, Categories, etc.) KHÔNG hỗ trợ PATCH
-   * → Sử dụng PUT (update) thay vì PATCH
-   */
-  async patch(id: string | number, data: Partial<TUpdate>): Promise<TData> {
-    const response = await this.axios.patch<ApiResponse<TData>>(
-      `${this.endpoint}/${id}`,
-      data
-    );
-    // Backend wraps patched data trong ApiResponse<T>
-    if (!response.data.data) {
-      throw new Error(response.data.message || 'Patch failed');
-    }
-    return response.data.data;
-  }
-
-  /**
-   * DELETE - Xóa (soft delete)
-   * Backend: DELETE /api/admin/{entity}/{id}
-   * Backend sử dụng soft delete pattern (set DeletedAt timestamp)
-   */
-  async delete(id: string | number): Promise<void> {
-    const response = await this.axios.delete<ApiResponse<boolean>>(
-      `${this.endpoint}/${id}`
-    );
-    // Backend trả về ApiResponse<bool>
-    if (response.data.isError) {
-      throw new Error(response.data.message || 'Delete failed');
-    }
-  }
-
-  /**
-   * Custom method - Cho các endpoint đặc biệt
-   * Ví dụ:
-   * - GET /api/admin/inventory/low-stock
-   * - GET /api/admin/reports/revenue
-   * - PATCH /api/admin/orders/{id}/status
-   */
-  async custom<TResponse = any>(
-    method: 'get' | 'post' | 'put' | 'patch' | 'delete',
-    path: string,
-    data?: any,
-    params?: QueryParams
-  ): Promise<TResponse> {
-    const url = path.startsWith('/') ? path : `${this.endpoint}/${path}`;
-    const response = await this.axios.request<ApiResponse<TResponse>>({
-      method,
-      url,
-      data,
-      params,
-    });
-    // Backend wraps response trong ApiResponse<T>
-    if (response.data.isError) {
-      throw new Error(response.data.message || 'Custom request failed');
-    }
-    return response.data.data as TResponse;
-  }
-}
-```
-
-### 4.3. QueryClient Configuration (`src/lib/queryClient.ts`)
-
-```typescript
-// shiny-carnival/frontend/src/lib/queryClient.ts
-import { QueryClient } from '@tanstack/react-query';
-
-/**
- * Cấu hình QueryClient cho TanStack Query
- */
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      // Thời gian data được coi là "fresh" (không refetch)
-      staleTime: 1000 * 60 * 5, // 5 phút
-      
-      // Thời gian cache data trước khi garbage collect
-      gcTime: 1000 * 60 * 30, // 30 phút (cacheTime đổi thành gcTime trong v5)
-      
-      // Retry khi query fail
-      retry: 1,
-      
-      // Refetch khi window focus
-      refetchOnWindowFocus: false,
-      
-      // Refetch khi reconnect
-      refetchOnReconnect: true,
-    },
-    mutations: {
-      // Retry khi mutation fail
-      retry: 0,
-    },
-  },
-});
-```
-
-### 4.4. Universal CRUD Hooks (`src/hooks/useApi.ts`)
-
-```typescript
-// shiny-carnival/frontend/src/hooks/useApi.ts
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  type UseQueryOptions,
-  type UseMutationOptions,
-  type QueryKey,
-} from '@tanstack/react-query';
-import type { ApiService, QueryParams } from '../lib/apiFactory';
-import type { PagedRequest, PagedList } from '../lib/axios';
-
-// ==================== Query Key Factory ====================
-
-/**
- * Tạo query keys có cấu trúc nhất quán cho entity
- * Giúp quản lý cache và invalidation dễ dàng
- */
-export const createQueryKeys = (entity: string) => ({
-  all: [entity] as const,
-  lists: () => [...createQueryKeys(entity).all, 'list'] as const,
-  list: (params?: QueryParams) => 
-    [...createQueryKeys(entity).lists(), params] as const,
-  details: () => [...createQueryKeys(entity).all, 'detail'] as const,
-  detail: (id: string | number) => 
-    [...createQueryKeys(entity).details(), id] as const,
-});
-
-// ==================== Hook Configuration Types ====================
-
-export interface UseApiListConfig<TData, TError = Error> {
-  apiService: ApiService<TData>;
-  entity: string;
-  params?: QueryParams;
-  options?: Omit<
-    UseQueryOptions<TData[], TError, TData[], QueryKey>,
-    'queryKey' | 'queryFn'
-  >;
-}
-
-export interface UseApiPagedListConfig<TData, TError = Error> {
-  apiService: ApiService<TData>;
-  entity: string;
-  params?: PagedRequest;
-  options?: Omit<
-    UseQueryOptions<PagedList<TData>, TError, PagedList<TData>, QueryKey>,
-    'queryKey' | 'queryFn'
-  >;
-}
-
-export interface UseApiDetailConfig<TData, TError = Error> {
-  apiService: ApiService<TData>;
-  entity: string;
-  id: string | number;
-  options?: Omit<
-    UseQueryOptions<TData, TError, TData, QueryKey>,
-    'queryKey' | 'queryFn'
-  >;
-}
-
-export interface UseApiMutationConfig<TData, TVariables, TError = Error> {
-  apiService: ApiService<TData>;
-  entity: string;
-  invalidateQueries?: string[];
-  options?: UseMutationOptions<TData, TError, TVariables>;
-}
-
-// ==================== GET ALL Hook ====================
-
-/**
- * Hook để lấy danh sách entity (không phân trang)
- */
-export function useApiList<TData = any, TError = Error>({
-  apiService,
-  entity,
-  params,
-  options,
-}: UseApiListConfig<TData, TError>) {
-  const queryKeys = createQueryKeys(entity);
-
-  return useQuery<TData[], TError>({
-    queryKey: queryKeys.list(params),
-    queryFn: () => apiService.getAll(params),
-    ...options,
-  });
-}
-
-// ==================== GET ALL PAGED Hook ====================
-
-/**
- * Hook để lấy danh sách entity có phân trang
- */
-export function useApiPagedList<TData = any, TError = Error>({
-  apiService,
-  entity,
-  params,
-  options,
-}: UseApiPagedListConfig<TData, TError>) {
-  const queryKeys = createQueryKeys(entity);
-
-  return useQuery<PagedList<TData>, TError>({
-    queryKey: queryKeys.list(params),
-    queryFn: () => apiService.getAllPaged(params),
-    ...options,
-  });
-}
-
-// ==================== GET BY ID Hook ====================
-
-/**
- * Hook để lấy chi tiết entity theo ID
- */
-export function useApiDetail<TData = any, TError = Error>({
-  apiService,
-  entity,
-  id,
-  options,
-}: UseApiDetailConfig<TData, TError>) {
-  const queryKeys = createQueryKeys(entity);
-
-  return useQuery<TData, TError>({
-    queryKey: queryKeys.detail(id),
-    queryFn: () => apiService.getById(id),
-    enabled: !!id, // Chỉ fetch khi có ID
-    ...options,
-  });
-}
-
-// ==================== CREATE Hook ====================
-
-/**
- * Hook để tạo mới entity
- */
-export function useApiCreate<
-  TData = any,
-  TCreate = any,
-  TError = Error
->({
-  apiService,
-  entity,
-  invalidateQueries = [],
-  options,
-}: UseApiMutationConfig<TData, TCreate, TError>) {
-  const queryClient = useQueryClient();
-  const queryKeys = createQueryKeys(entity);
-
-  return useMutation<TData, TError, TCreate>({
-    mutationFn: (data: TCreate) => apiService.create(data),
-    onSuccess: (data, variables, context) => {
-      // Invalidate danh sách để refetch
-      queryClient.invalidateQueries({ queryKey: queryKeys.lists() });
-      
-      // Invalidate các queries bổ sung
-      invalidateQueries.forEach((key) => {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      });
-
-      // Gọi onSuccess của user nếu có
-      options?.onSuccess?.(data, variables, context);
-    },
-    ...options,
-  });
-}
-
-// ==================== UPDATE Hook ====================
-
-/**
- * Hook để cập nhật entity
- */
-export function useApiUpdate<
-  TData = any,
-  TUpdate = any,
-  TError = Error
->({
-  apiService,
-  entity,
-  invalidateQueries = [],
-  options,
-}: UseApiMutationConfig<TData, { id: string | number; data: TUpdate }, TError>) {
-  const queryClient = useQueryClient();
-  const queryKeys = createQueryKeys(entity);
-
-  return useMutation<TData, TError, { id: string | number; data: TUpdate }>({
-    mutationFn: ({ id, data }) => apiService.update(id, data),
-    onSuccess: (data, variables, context) => {
-      // Invalidate danh sách
-      queryClient.invalidateQueries({ queryKey: queryKeys.lists() });
-      
-      // Invalidate chi tiết cụ thể
-      queryClient.invalidateQueries({ queryKey: queryKeys.detail(variables.id) });
-      
-      // Invalidate các queries bổ sung
-      invalidateQueries.forEach((key) => {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      });
-
-      options?.onSuccess?.(data, variables, context);
-    },
-    ...options,
-  });
-}
-
-// ==================== PATCH Hook ====================
-
-/**
- * Hook để cập nhật một phần entity
- */
-export function useApiPatch<
-  TData = any,
-  TUpdate = any,
-  TError = Error
->({
-  apiService,
-  entity,
-  invalidateQueries = [],
-  options,
-}: UseApiMutationConfig<TData, { id: string | number; data: Partial<TUpdate> }, TError>) {
-  const queryClient = useQueryClient();
-  const queryKeys = createQueryKeys(entity);
-
-  return useMutation<TData, TError, { id: string | number; data: Partial<TUpdate> }>({
-    mutationFn: ({ id, data }) => apiService.patch(id, data),
-    onSuccess: (data, variables, context) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.detail(variables.id) });
-      
-      invalidateQueries.forEach((key) => {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      });
-
-      options?.onSuccess?.(data, variables, context);
-    },
-    ...options,
-  });
-}
-
-// ==================== DELETE Hook ====================
-
-/**
- * Hook để xóa entity
- */
-export function useApiDelete<TError = Error>({
-  apiService,
-  entity,
-  invalidateQueries = [],
-  options,
-}: Omit<UseApiMutationConfig<void, string | number, TError>, 'options'> & {
-  options?: UseMutationOptions<void, TError, string | number>;
-}) {
-  const queryClient = useQueryClient();
-  const queryKeys = createQueryKeys(entity);
-
-  return useMutation<void, TError, string | number>({
-    mutationFn: (id) => apiService.delete(id),
-    onSuccess: (data, variables, context) => {
-      // Invalidate danh sách
-      queryClient.invalidateQueries({ queryKey: queryKeys.lists() });
-      
-      // Xóa chi tiết khỏi cache
-      queryClient.removeQueries({ queryKey: queryKeys.detail(variables) });
-      
-      // Invalidate các queries bổ sung
-      invalidateQueries.forEach((key) => {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      });
-
-      options?.onSuccess?.(data, variables, context);
-    },
-    ...options,
-  });
-}
-
-// ==================== Custom Query Hook ====================
-
-/**
- * Hook cho custom query
- */
-export function useApiCustomQuery<TData = any, TError = Error>({
-  entity,
-  queryKey,
-  queryFn,
-  options,
-}: {
-  entity: string;
-  queryKey: QueryKey;
-  queryFn: () => Promise<TData>;
-  options?: Omit<UseQueryOptions<TData, TError, TData, QueryKey>, 'queryKey' | 'queryFn'>;
-}) {
-  return useQuery<TData, TError>({
-    queryKey: [entity, ...queryKey],
-    queryFn,
-    ...options,
-  });
-}
-
-// ==================== Custom Mutation Hook ====================
-
-/**
- * Hook cho custom mutation
- */
-export function useApiCustomMutation<
-  TData = any,
-  TVariables = any,
-  TError = Error
->({
-  entity,
-  mutationFn,
-  invalidateQueries = [],
-  options,
-}: {
-  entity: string;
-  mutationFn: (variables: TVariables) => Promise<TData>;
-  invalidateQueries?: string[];
-  options?: UseMutationOptions<TData, TError, TVariables>;
-}) {
-  const queryClient = useQueryClient();
-
-  return useMutation<TData, TError, TVariables>({
-    mutationFn,
-    onSuccess: (data, variables, context) => {
-      // Invalidate entity queries
-      queryClient.invalidateQueries({ queryKey: [entity] });
-      
-      // Invalidate các queries bổ sung
-      invalidateQueries.forEach((key) => {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      });
-
-      options?.onSuccess?.(data, variables, context);
-    },
-    ...options,
-  });
-}
-```
 
 ### 4.5. Setup QueryClient Provider (`src/app/main.tsx`)
 
@@ -748,70 +238,82 @@ if (!rootElement.innerHTML) {
 }
 ```
 
-### 4.6. Product API Service Example (`src/lib/api/productApiService.ts`)
+### 4.6. Product API Service Example - Hybrid Approach (`src/features/products/api/ProductApiService.ts`)
 
 ```typescript
-// shiny-carnival/frontend/src/lib/api/productApiService.ts
-import axiosClient from '../axios';
-import { ApiService } from '../apiFactory';
-import { API_CONFIG } from '../../config/api';
-import type { ProductEntity } from '../../features/products/types/entity';
-import type { CreateProductRequest, UpdateProductRequest } from '../../features/products/types/api';
+// shiny-carnival/frontend/src/features/products/api/ProductApiService.ts
+import { BaseApiService } from '../../../lib/api/base/BaseApiService';
+import axiosClient from '../../../lib/axios';
+import { API_CONFIG } from '../../../config/api';
+import type { ProductEntity } from '../types/entity';
+import type { CreateProductRequest, UpdateProductRequest } from '../types/api';
+import type { PagedList, PagedRequest } from '../../../lib/axios';
 
 /**
- * Product API Service Instance
- * Sử dụng ApiService class với Product types
+ * ProductApiService - Extends BaseApiService với custom methods
+ * 
+ * Kế thừa tất cả CRUD methods từ BaseApiService:
+ * - getAll(), getPaginated(), getById()
+ * - create(), update(), patch(), delete()
+ * - custom()
+ * 
+ * Thêm custom methods riêng cho Products:
+ * - searchByBarcode()
+ * - getProductsByCategory()
+ * - getProductsBySupplier()
  */
-export const productApiService = new ApiService<
+export class ProductApiService extends BaseApiService<
   ProductEntity,
   CreateProductRequest,
   UpdateProductRequest
->({
-  endpoint: API_CONFIG.ENDPOINTS.ADMIN.PRODUCTS,
-  axiosInstance: axiosClient,
-});
+> {
+  constructor() {
+    super({
+      endpoint: API_CONFIG.ENDPOINTS.ADMIN.PRODUCTS,
+      axiosInstance: axiosClient,
+    });
+  }
 
-/**
- * Extended Product API với custom methods
- */
-export const productApi = {
-  ...productApiService,
-  
   /**
    * Tìm kiếm sản phẩm theo barcode
    */
-  searchByBarcode: (barcode: string) => {
-    return productApiService.custom<ProductEntity[]>(
-      'get',
-      '',
-      undefined,
-      { search: barcode, pageSize: 10 }
-    );
-  },
-  
+  async searchByBarcode(barcode: string): Promise<ProductEntity[]> {
+    const pagedData = await this.getPaginated({
+      search: barcode,
+      pageSize: 10,
+    });
+    return pagedData.items;
+  }
+
   /**
-   * Lấy sản phẩm theo category
+   * Lấy sản phẩm theo danh mục
    */
-  getByCategory: (categoryId: number) => {
-    return productApiService.custom<ProductEntity[]>(
-      'get',
-      '',
-      undefined,
-      { categoryId }
-    );
-  },
-  
+  async getProductsByCategory(
+    categoryId: number,
+    params?: Omit<PagedRequest, 'categoryId'>
+  ): Promise<PagedList<ProductEntity>> {
+    return this.getPaginated({
+      ...params,
+      categoryId,
+    } as PagedRequest);
+  }
+
   /**
-   * Bulk update stock
+   * Lấy sản phẩm theo nhà cung cấp
    */
-  bulkUpdateStock: (updates: Array<{ id: number; stock: number }>) => {
-    return productApiService.custom<ProductEntity[]>(
-      'post',
-      'bulk-update-stock',
-      updates
-    );
-  },
-};
+  async getProductsBySupplier(
+    supplierId: number,
+    params?: Omit<PagedRequest, 'supplierId'>
+  ): Promise<PagedList<ProductEntity>> {
+    return this.getPaginated({
+      ...params,
+      supplierId,
+    } as PagedRequest);
+  }
+}
+
+// Export singleton instance
+export const productApiService = new ProductApiService();
 ```
 
 ### 4.7. Product Hooks Example (`src/features/products/hooks/useProducts.ts`)
@@ -819,14 +321,14 @@ export const productApi = {
 ```typescript
 // shiny-carnival/frontend/src/features/products/hooks/useProducts.ts
 import { 
-  useApiPagedList,
+  useApiPaginated,
   useApiDetail, 
   useApiCreate, 
   useApiUpdate, 
   useApiDelete,
   useApiCustomQuery,
 } from '../../../hooks/useApi';
-import { productApiService, productApi } from '../../../lib/api/productApiService';
+import { productApiService } from '../api/ProductApiService';
 import type { ProductEntity } from '../types/entity';
 import type { CreateProductRequest, UpdateProductRequest } from '../types/api';
 import type { PagedRequest } from '../../../lib/axios';
@@ -839,7 +341,7 @@ const ENTITY = 'products';
  * Hook lấy danh sách sản phẩm có phân trang
  */
 export const useProducts = (params?: PagedRequest) => {
-  return useApiPagedList<ProductEntity>({
+  return useApiPaginated<ProductEntity>({
     apiService: productApiService,
     entity: ENTITY,
     params,
@@ -1206,17 +708,17 @@ export const ProductForm = ({ productId }: ProductFormProps) => {
 };
 ```
 
-### 4.9. Infinite Scroll Hook (`src/hooks/useApiInfinite.ts`)
+### 4.9. Infinite Scroll Hook (⚠️ KHÔNG ĐƯỢC ĐỊNH NGHĨA - ĐÃ XÓA)
 
 ```typescript
 // shiny-carnival/frontend/src/hooks/useApiInfinite.ts
 import { useInfiniteQuery, type UseInfiniteQueryOptions } from '@tanstack/react-query';
-import type { ApiService, QueryParams } from '../lib/apiFactory';
+import type { BaseApiService, QueryParams } from '../lib/api/base/BaseApiService';
 import type { PagedList } from '../lib/axios';
 import { createQueryKeys } from './useApi';
 
 export interface UseApiInfiniteConfig<TData, TError = Error> {
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
   params?: QueryParams;
   pageSize?: number;
@@ -1249,7 +751,7 @@ export function useApiInfinite<TData = any, TError = Error>({
   return useInfiniteQuery<PagedList<TData>, TError>({
     queryKey: queryKeys.list({ ...params, pageSize }),
     queryFn: ({ pageParam = 1 }) => {
-      return apiService.getAllPaged({
+      return apiService.getPaginated({
         ...params,
         page: pageParam as number,
         pageSize,
@@ -1276,12 +778,12 @@ export function useApiInfinite<TData = any, TError = Error>({
 ```typescript
 // shiny-carnival/frontend/src/hooks/usePagination.ts
 import { useState, useMemo } from 'react';
-import { useApiPagedList } from './useApi';
-import type { ApiService, QueryParams } from '../lib/apiFactory';
+import { useApiPaginated } from './useApi';
+import type { BaseApiService, QueryParams } from '../lib/api/base/BaseApiService';
 import type { PagedRequest } from '../lib/axios';
 
 export interface UsePaginationConfig<TData> {
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
   initialPage?: number;
   initialPageSize?: number;
@@ -1323,7 +825,7 @@ export function usePagination<TData = any>({
   }), [page, pageSize, search, sortBy, sortDesc, additionalParams]);
 
   // Fetch data với pagination
-  const query = useApiPagedList<TData>({
+  const query = useApiPaginated<TData>({
     apiService,
     entity,
     params,
@@ -1399,12 +901,12 @@ export function usePagination<TData = any>({
 // shiny-carnival/frontend/src/hooks/usePaginationWithRouter.ts
 import { useNavigate } from '@tanstack/react-router';
 import { useMemo } from 'react';
-import { useApiPagedList } from './useApi';
-import type { ApiService, QueryParams } from '../lib/apiFactory';
+import { useApiPaginated } from './useApi';
+import type { BaseApiService, QueryParams } from '../lib/api/base/BaseApiService';
 import type { PagedRequest } from '../lib/axios';
 
 export interface UsePaginationWithRouterConfig<TData> {
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
   routeApi: any; // TanStack Router route API
   additionalParams?: QueryParams;
@@ -1444,7 +946,7 @@ export function usePaginationWithRouter<TData = any>({
   }), [search, additionalParams]);
 
   // Fetch data
-  const query = useApiPagedList<TData>({
+  const query = useApiPaginated<TData>({
     apiService,
     entity,
     params,
@@ -1519,12 +1021,12 @@ export function usePaginationWithRouter<TData = any>({
 ```typescript
 // shiny-carnival/frontend/src/hooks/usePaginationWithFilters.ts
 import { useState, useMemo } from 'react';
-import { useApiPagedList } from './useApi';
-import type { ApiService, QueryParams } from '../lib/apiFactory';
+import { useApiPaginated } from './useApi';
+import type { BaseApiService, QueryParams } from '../lib/api/base/BaseApiService';
 import type { PagedRequest } from '../lib/axios';
 
 export interface UsePaginationWithFiltersConfig<TData, TFilters extends Record<string, any>> {
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
   initialFilters?: TFilters;
   initialPage?: number;
@@ -1577,7 +1079,7 @@ export function usePaginationWithFilters<TData = any, TFilters extends Record<st
   }), [page, pageSize, sortBy, sortDesc, filters]);
 
   // Fetch data
-  const query = useApiPagedList<TData>({
+  const query = useApiPaginated<TData>({
     apiService,
     entity,
     params,
@@ -1653,7 +1155,7 @@ export function usePaginationWithFilters<TData = any, TFilters extends Record<st
 
 ### 4.12. Usage Examples Chi tiết cho từng Hook
 
-#### 4.12.1. useApiInfinite - Infinite Scroll Hook
+#### 4.12.1. useApiInfinite - Infinite Scroll Hook (⚠️ KHÔNG ĐƯỢC ĐỊNH NGHĨA - ĐÃ XÓA)
 
 **📌 Basic Usage:**
 
@@ -1770,7 +1272,7 @@ function ProductInfiniteListWithFilters() {
 ```typescript
 interface UseApiInfiniteConfig<TData, TError = Error> {
   // Required
-  apiService: ApiService<TData>;  // API service instance
+  apiService: BaseApiService<TData>;  // API service instance
   entity: string;                 // Entity name cho query keys
 
   // Optional
@@ -2025,7 +1527,7 @@ function ProductTableAdvanced() {
 ```typescript
 interface UsePaginationConfig<TData> {
   // Required
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
 
   // Optional
@@ -2248,7 +1750,7 @@ function ProductListPageAdvanced() {
 
 ```typescript
 interface UsePaginationWithRouterConfig<TData> {
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
   routeApi: any; // TanStack Router route API
   additionalParams?: QueryParams;
@@ -2541,7 +2043,7 @@ function ProductTableWithFilterDrawer() {
 
 ```typescript
 interface UsePaginationWithFiltersConfig<TData, TFilters> {
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
   initialFilters?: TFilters;      // Default filters
   initialPage?: number;
@@ -2830,7 +2332,7 @@ const prefetchMultiplePages = useCallback(() => {
 ```typescript
 interface UseApiListConfig<TData, TError = Error> {
   // REQUIRED
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   // - Mô tả: Instance của ApiService cho entity cụ thể
   // - Type: ApiService<TData>
   // - Example: productApiService, userApiService
@@ -3018,31 +2520,33 @@ const { data: products } = useApiList({
 });
 ```
 
-#### 4.13.2. useApiPagedList - GET Paged Items
+#### 4.13.2. useApiPaginated - GET Paged Items
 
 **📥 INPUT PARAMETERS:**
 
 ```typescript
-interface UseApiPagedListConfig<TData, TError = Error> {
+// ⚠️ LƯU Ý: useApiPaginated KHÔNG có interface riêng như các hooks khác
+// Thay vào đó, nó sử dụng inline type definition như sau:
+
+{
   // REQUIRED
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   // - Mô tả: Instance của ApiService
-  // - Type: ApiService<TData>
+  // - Type: BaseApiService<TData>
 
   entity: string;
   // - Mô tả: Entity name cho query keys
   // - Type: string
 
   // OPTIONAL
-  params?: PagedRequest & QueryParams;
+  params?: PagedRequest;
   // - Mô tả: Pagination + filter parameters
-  // - Type: Object với các fields:
+  // - Type: PagedRequest với các fields:
   //   * page: number (required) - Page number (1-based)
   //   * pageSize: number (required) - Items per page
   //   * search?: string - Search text
   //   * sortBy?: string - Sort field
   //   * sortDesc?: boolean - Sort descending
-  //   * ...custom filters
   // - Example:
   //   {
   //     page: 1,
@@ -3050,16 +2554,32 @@ interface UseApiPagedListConfig<TData, TError = Error> {
   //     search: 'laptop',
   //     sortBy: 'price',
   //     sortDesc: false,
-  //     categoryId: 5
   //   }
-  // - Default: { page: 1, pageSize: 20 }
+  // - Default: undefined
 
-  options?: UseQueryOptions<PagedList<TData>, TError>;
-  // - Mô tả: TanStack Query options
+  options?: Omit<UseQueryOptions<PagedList<TData>, TError>, 'queryKey' | 'queryFn'>;
+  // - Mô tả: TanStack Query options (loại trừ queryKey và queryFn vì đã được xử lý nội bộ)
   // - Common options:
   //   * staleTime: Cache time
-  //   * placeholderData: Keep previous data while fetching
+  //   * keepPreviousData: Keep previous data while fetching (mặc định: true)
   //   * enabled: Enable/disable query
+}
+```
+
+**Định nghĩa thực tế trong CustomHookAPIFactory.md:**
+```typescript
+export function useApiPaginated<TData = any>({
+  apiService,
+  entity,
+  params,
+  options,
+}: {
+  apiService: BaseApiService<TData>;
+  entity: string;
+  params?: PagedRequest;
+  options?: Omit<UseQueryOptions<PagedList<TData>>, 'queryKey' | 'queryFn'>;
+}) {
+  // ...
 }
 ```
 
@@ -3114,7 +2634,7 @@ interface UseApiPagedListConfig<TData, TError = Error> {
 ```
 1. Component mount với pagination params
    ↓
-2. useApiPagedList được gọi
+2. useApiPaginated được gọi
    ↓
 3. Tạo query key với pagination params
    Example: ['products', 'list', { page: 1, pageSize: 20, search: 'laptop' }]
@@ -3123,7 +2643,7 @@ interface UseApiPagedListConfig<TData, TError = Error> {
    ├─ Cache hit → Return cached data
    └─ Cache miss → Continue
    ↓
-5. Call apiService.getAllPaged(params)
+5. Call apiService.getPaginated(params)
    ↓
 6. API Request với query params
    GET /api/products?page=1&pageSize=20&search=laptop
@@ -3151,11 +2671,11 @@ interface UseApiPagedListConfig<TData, TError = Error> {
 
 ```mermaid
 graph TD
-    A[Component] -->|page=1, pageSize=20| B[useApiPagedList]
+    A[Component] -->|page=1, pageSize=20| B[useApiPaginated]
     B -->|Create Key| C["['products', 'list', {page:1, pageSize:20}]"]
     C -->|Check Cache| D{Cache?}
     D -->|Hit| E[Return Cached PagedList]
-    D -->|Miss| F[apiService.getAllPaged]
+    D -->|Miss| F[apiService.getPaginated]
     F -->|GET /api/products?page=1&pageSize=20| G[Backend]
     G -->|Process| H[Filter + Sort + Paginate]
     H -->|Response| I[PagedList Object]
@@ -3171,7 +2691,7 @@ graph TD
 **⚙️ INTERNAL MECHANISM:**
 
 ```typescript
-export function useApiPagedList<TData>({ apiService, entity, params, options }) {
+export function useApiPaginated<TData>({ apiService, entity, params, options }) {
   // 1. Tạo query key với pagination params
   const queryKeys = createQueryKeys(entity);
   const queryKey = queryKeys.list(params);
@@ -3181,7 +2701,7 @@ export function useApiPagedList<TData>({ apiService, entity, params, options }) 
   // 2. useQuery
   return useQuery<PagedList<TData>>({
     queryKey,
-    queryFn: () => apiService.getAllPaged(params),
+    queryFn: () => apiService.getPaginated(params),
 
     // Keep previous data while fetching new page
     placeholderData: (previousData) => previousData,
@@ -3202,7 +2722,7 @@ export function useApiPagedList<TData>({ apiService, entity, params, options }) 
 
 ```typescript
 // 1. Basic pagination
-const { data } = useApiPagedList({
+const { data } = useApiPaginated({
   apiService: productApiService,
   entity: 'products',
   params: { page: 1, pageSize: 20 },
@@ -3212,7 +2732,7 @@ const { data } = useApiPagedList({
 // data.totalPages: 8
 
 // 2. With search
-const { data } = useApiPagedList({
+const { data } = useApiPaginated({
   apiService: productApiService,
   entity: 'products',
   params: {
@@ -3223,7 +2743,7 @@ const { data } = useApiPagedList({
 });
 
 // 3. With sort
-const { data } = useApiPagedList({
+const { data } = useApiPaginated({
   apiService: productApiService,
   entity: 'products',
   params: {
@@ -3235,7 +2755,7 @@ const { data } = useApiPagedList({
 });
 
 // 4. With filters
-const { data } = useApiPagedList({
+const { data } = useApiPaginated({
   apiService: productApiService,
   entity: 'products',
   params: {
@@ -3248,7 +2768,7 @@ const { data } = useApiPagedList({
 });
 
 // 5. Keep previous data while fetching
-const { data, isFetching, isPlaceholderData } = useApiPagedList({
+const { data, isFetching, isPlaceholderData } = useApiPaginated({
   apiService: productApiService,
   entity: 'products',
   params: { page, pageSize },
@@ -3292,7 +2812,7 @@ queryClient.invalidateQueries({ queryKey: ['products'] });
 ```typescript
 interface UseApiInfiniteConfig<TData, TError = Error> {
   // REQUIRED
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
 
   // OPTIONAL
@@ -3389,7 +2909,7 @@ interface UseApiInfiniteConfig<TData, TError = Error> {
    ↓
 4. Load page 1 (initialPageParam = 1)
    ↓
-5. Call apiService.getAllPaged({ page: 1, pageSize: 20, ...params })
+5. Call apiService.getPaginated({ page: 1, pageSize: 20, ...params })
    ↓
 6. Response: PagedList<TData>
    {
@@ -3437,7 +2957,7 @@ interface UseApiInfiniteConfig<TData, TError = Error> {
 ```mermaid
 graph TD
     A[Component Mount] -->|initialPageParam=1| B[useApiInfinite]
-    B -->|Fetch Page 1| C[apiService.getAllPaged]
+    B -->|Fetch Page 1| C[apiService.getPaginated]
     C -->|Response| D[PagedList Page 1]
     D -->|Store| E[data.pages[0]]
     E -->|getNextPageParam| F{hasNext?}
@@ -3467,7 +2987,7 @@ export function useApiInfinite<TData>({ apiService, entity, params, pageSize, op
 
     // Query function với pageParam
     queryFn: ({ pageParam = 1 }) => {
-      return apiService.getAllPaged({
+      return apiService.getPaginated({
         ...params,
         page: pageParam as number,
         pageSize,
@@ -3590,7 +3110,7 @@ queryClient.invalidateQueries({ queryKey: ['products'] });
 ```typescript
 interface UsePaginationConfig<TData> {
   // REQUIRED
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
 
   // OPTIONAL - Initial State
@@ -3625,7 +3145,7 @@ interface UsePaginationConfig<TData> {
 
 ```typescript
 {
-  // QUERY RESULT (từ useApiPagedList)
+  // QUERY RESULT (từ useApiPaginated)
   data: PagedList<TData> | undefined;
   isLoading: boolean;
   isFetching: boolean;
@@ -3696,7 +3216,7 @@ interface UsePaginationConfig<TData> {
      ...additionalParams
    }
    ↓
-4. Call useApiPagedList với params
+4. Call useApiPaginated với params
    ↓
 5. Fetch data từ API
    ↓
@@ -3712,7 +3232,7 @@ interface UsePaginationConfig<TData> {
       ↓
       params thay đổi: { page: 2, ... }
       ↓
-      useApiPagedList refetch với params mới
+      useApiPaginated refetch với params mới
       ↓
       Component re-render với page 2 data
 
@@ -3725,7 +3245,7 @@ interface UsePaginationConfig<TData> {
       ↓
       params thay đổi: { page: 1, search: 'laptop', ... }
       ↓
-      useApiPagedList refetch
+      useApiPaginated refetch
       ↓
       Component re-render với search results
 
@@ -3739,7 +3259,7 @@ interface UsePaginationConfig<TData> {
       ↓
       params thay đổi: { page: 1, sortBy: 'price', sortDesc: false, ... }
       ↓
-      useApiPagedList refetch
+      useApiPaginated refetch
       ↓
       Component re-render với sorted data
 
@@ -3752,7 +3272,7 @@ interface UsePaginationConfig<TData> {
       ↓
       params thay đổi: { page: 1, pageSize: 50, ... }
       ↓
-      useApiPagedList refetch
+      useApiPaginated refetch
       ↓
       Component re-render với 50 items
 ```
@@ -3806,7 +3326,7 @@ export function usePagination<TData>({ apiService, entity, initialPage = 1, ... 
   }), [page, pageSize, search, sortBy, sortDesc, additionalParams]);
 
   // 3. Fetch data
-  const query = useApiPagedList<TData>({
+  const query = useApiPaginated<TData>({
     apiService,
     entity,
     params,
@@ -3884,7 +3404,7 @@ export function usePagination<TData>({ apiService, entity, initialPage = 1, ... 
 
 ```typescript
 interface UsePaginationWithRouterConfig<TData> {
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
 
   routeApi: any;
@@ -3937,7 +3457,7 @@ interface UsePaginationWithRouterConfig<TData> {
    ↓
 4. Build params từ URL
    ↓
-5. Call useApiPagedList với params
+5. Call useApiPaginated với params
    ↓
 6. Fetch data cho page 2 với search='laptop'
    ↓
@@ -3953,7 +3473,7 @@ interface UsePaginationWithRouterConfig<TData> {
    ↓
 12. routeApi.useSearch() returns new params
    ↓
-13. params thay đổi → useApiPagedList refetch
+13. params thay đổi → useApiPaginated refetch
    ↓
 14. Component re-render với page 3 data
    ↓
@@ -3969,7 +3489,7 @@ interface UsePaginationWithRouterConfig<TData> {
 ```mermaid
 graph LR
     A[URL] -->|Read| B[routeApi.useSearch]
-    B -->|Params| C[useApiPagedList]
+    B -->|Params| C[useApiPaginated]
     C -->|Fetch| D[API]
     D -->|Data| E[Component]
 
@@ -4002,7 +3522,7 @@ export function usePaginationWithRouter<TData>({ apiService, entity, routeApi, a
   }), [search, additionalParams]);
 
   // 3. Fetch data
-  const query = useApiPagedList<TData>({
+  const query = useApiPaginated<TData>({
     apiService,
     entity,
     params,
@@ -4094,7 +3614,7 @@ navigate({
 ```typescript
 interface UseApiDetailConfig<TData, TError = Error> {
   // REQUIRED
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   // - Mô tả: Instance của ApiService
 
   entity: string;
@@ -4309,7 +3829,7 @@ mutation.mutate({ id: 123, productName: 'New Name' });
 ```typescript
 interface UseApiCreateConfig<TData, TCreateData, TError = Error> {
   // REQUIRED
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   // - Mô tả: Instance của ApiService
 
   entity: string;
@@ -4599,7 +4119,7 @@ const onSubmit = form.handleSubmit((data) => {
 
 ```typescript
 interface UseApiUpdateConfig<TData, TUpdateData, TError = Error> {
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
 
   options?: UseMutationOptions<TData, TError, { id: number | string; data: TUpdateData }>;
@@ -4808,7 +4328,7 @@ const onSubmit = form.handleSubmit((data) => {
 
 ```typescript
 interface UseApiPatchConfig<TData, TPatchData, TError = Error> {
-  apiService: ApiService<TData>;
+  apiService: BaseApiService<TData>;
   entity: string;
 
   options?: UseMutationOptions<TData, TError, { id: number | string; data: Partial<TPatchData> }>;
@@ -5625,7 +5145,7 @@ const publishProduct = useApiCustomMutation({
 │ Hook                │ Purpose              │ API Method              │
 ├─────────────────────┼──────────────────────┼─────────────────────────┤
 │ useApiList          │ Get all items        │ GET /api/products       │
-│ useApiPagedList     │ Get paged items      │ GET /api/products?page=1│
+│ useApiPaginated     │ Get paged items      │ GET /api/products?page=1│
 │ useApiInfinite      │ Infinite scroll      │ GET /api/products?page=N│
 │ useApiDetail        │ Get by ID            │ GET /api/products/123   │
 │ useApiCustomQuery   │ Custom GET           │ GET /api/products/stats │
@@ -5662,7 +5182,7 @@ const publishProduct = useApiCustomMutation({
 ```typescript
 // src/lib/api/customerApiService.ts
 import axiosClient from '../axios';
-import { ApiService } from '../apiFactory';
+import { BaseApiService } from '../../../lib/api/base/BaseApiService';
 import { API_CONFIG } from '../../config/api';
 import type { CustomerEntity } from '../../features/customers/types/entity';
 import type { CreateCustomerRequest, UpdateCustomerRequest } from '../../features/customers/types/api';
@@ -5682,7 +5202,7 @@ export const customerApiService = new ApiService<
 ```typescript
 // src/features/customers/hooks/useCustomers.ts
 import { 
-  useApiPagedList,
+  useApiPaginated,
   useApiDetail, 
   useApiCreate, 
   useApiUpdate, 
@@ -5696,7 +5216,7 @@ import type { PagedRequest } from '../../../lib/axios';
 const ENTITY = 'customers';
 
 export const useCustomers = (params?: PagedRequest) => {
-  return useApiPagedList<CustomerEntity>({
+  return useApiPaginated<CustomerEntity>({
     apiService: customerApiService,
     entity: ENTITY,
     params,
@@ -5754,7 +5274,6 @@ export const CustomerList = () => {
 import { useQueryClient } from '@tanstack/react-query';
 import { usePagination } from './usePagination';
 import { createQueryKeys } from './useApi';
-import type { ApiService } from '../lib/apiFactory';
 import type { PagedRequest } from '../lib/axios';
 import type { UsePaginationConfig } from './usePagination';
 
@@ -5785,7 +5304,7 @@ export function usePaginationWithPrefetch<TData = any>(
 
       queryClient.prefetchQuery({
         queryKey: queryKeys.list(nextParams),
-        queryFn: () => config.apiService.getAllPaged(nextParams),
+        queryFn: () => config.apiService.getPaginated(nextParams),
         staleTime: 1000 * 60 * 5,
       });
     }
@@ -5805,7 +5324,7 @@ export function usePaginationWithPrefetch<TData = any>(
 
       queryClient.prefetchQuery({
         queryKey: queryKeys.list(prevParams),
-        queryFn: () => config.apiService.getAllPaged(prevParams),
+        queryFn: () => config.apiService.getPaginated(prevParams),
         staleTime: 1000 * 60 * 5,
       });
     }
@@ -6253,7 +5772,7 @@ export function useProductsWithPersistence() {
 
 #### Core Setup
 - [ ] Cài đặt `@tanstack/react-query` và `@tanstack/react-query-devtools`
-- [ ] Tạo `src/lib/apiFactory.ts` - ApiService class
+- [ ] Tạo `src/lib/api/base/BaseApiService.ts` - BaseApiService class
 - [ ] Tạo `src/lib/queryClient.ts` - QueryClient config
 - [ ] Cập nhật `src/app/main.tsx` với QueryClientProvider
 
@@ -6318,7 +5837,7 @@ export function useProductsWithPersistence() {
 ### 🎯 Key Features Summary:
 
 #### Pagination Support
-- ✅ Server-side pagination với `useApiPagedList`
+- ✅ Server-side pagination với `useApiPaginated`
 - ✅ Infinite scroll với `useApiInfinite`
 - ✅ URL-based pagination với `usePaginationWithRouter`
 - ✅ Advanced filters với `usePaginationWithFilters`
@@ -6484,11 +6003,18 @@ GET /api/admin/products?page=1&pagesize=20&search=coca&sortby=ProductName&sortde
 ```
 
 #### Backend nhận được (ASP.NET Core Model Binding):
-✅ **ASP.NET Core Model Binding** là **case-insensitive**
-✅ Tự động bind: `page` → `Page`, `pagesize` → `PageSize`, `categoryid` → `CategoryId`
-✅ Không cần transform, backend tự động map
+⚠️ **QUAN TRỌNG**: Mặc dù ASP.NET Core Model Binding là **case-insensitive**, nhưng để đảm bảo consistency và tránh lỗi, frontend **NÊN** gửi query parameters dưới dạng **PascalCase** như backend yêu cầu.
 
-**Lưu ý**: Backend API Reference examples sử dụng PascalCase (`Page`, `PageSize`) nhưng đó chỉ là convention trong C#. Frontend có thể gửi camelCase hoặc lowercase, backend đều nhận được chính xác.
+**Khuyến nghị**:
+- ✅ Gửi đúng PascalCase: `Page`, `PageSize`, `CategoryId`, `MinPrice`
+- ❌ Tránh gửi camelCase hoặc lowercase (mặc dù có thể hoạt động)
+
+**Lý do**: 
+- Đảm bảo consistency với backend API contract
+- Tránh các vấn đề tiềm ẩn với một số middleware hoặc validation
+- Tuân theo chuẩn được định nghĩa trong BACKEND_API_REFERENCE.md
+
+**Xem thêm**: [BACKEND_API_REFERENCE.md - Section 1.7: Query Parameters Naming Convention](../api/BACKEND_API_REFERENCE.md#17-query-parameters-naming-convention)
 
 ### 9.3. Authorization Requirements
 
@@ -6582,54 +6108,120 @@ Mỗi entity có các SortBy options và filters riêng:
 #### Entity-Specific Validation:
 
 **Products**:
-- `categoryId`: Must exist in database
-- `supplierId`: Must exist in database
-- `minPrice`: >= 0
-- `maxPrice`: >= minPrice
-- `price`: > 0 (for create/update)
-- `productName`: Required, max 100 chars
-- `barcode`: Required, max 50 chars, **unique**
-- `unit`: Required, max 20 chars, default "pcs"
+- `categoryId`: Required, integer, must exist in database
+- `supplierId`: Required, integer, must exist in database
+- `minPrice`: Optional, number (double), >= 0
+- `maxPrice`: Optional, number (double), >= minPrice
+- `price`: Required, number (double), minimum 0.01 (phải > 0)
+- `productName`: Required, string, min 1 character, max 100 characters
+- `barcode`: Required, string, min 1 character, max 50 characters, **unique**
+- `unit`: Required, string, min 1 character, max 20 characters, default "pcs"
 
 **Categories**:
-- `categoryName`: Required, max 100 chars, **unique**
+- `categoryName`: Required, string, min 1 character, max 100 characters, **unique**
 
 **Customers**:
-- `name`: Required, max 100 chars
-- `phone`: Required, max 20 chars
-- `email`: Optional, max 100 chars, valid email format
+- `name`: Required, string, min 1 character, max 100 characters
+- `phone`: Required, string, min 1 character, max 20 characters
+- `email`: Optional, nullable, string, max 100 characters, valid email format
+- `address`: Optional, nullable, string, max 255 characters
 
 **Suppliers**:
-- `name`: Required, max 100 chars
-- `phone`: Required, max 20 chars
-- `email`: Optional, max 100 chars, valid email format
-- `address`: Optional, max 255 chars
+- `name`: Required, string, min 1 character, max 100 characters
+- `phone`: Required, string, min 1 character, max 20 characters
+- `email`: Optional, nullable, string, max 100 characters, valid email format
+- `address`: Optional, nullable, string, max 255 characters
 
 **Orders**:
-- `status`: Must be "Pending", "Paid", or "Cancelled"
-- `customerId`: Required, must exist
+- `status` (for search filter): Optional, string - "Pending" | "Paid" | "Cancelled" (PascalCase)
+- `status` (for update): Required, string, pattern: `^(paid|canceled)$` (lowercase) - **LƯU Ý**: Khi update order status, phải dùng lowercase "paid" hoặc "canceled"
+- `customerId`: Required, integer, must exist in database
 - `userId`: Auto-filled from JWT token
-- `startDate`: <= Now (for search filter)
-- `endDate`: >= startDate, <= Now (for search filter)
+- `orderItems[].productId`: Required, integer, must exist in database
+- `orderItems[].quantity`: Required, integer, minimum 1, maximum 2147483647
+- `startDate`: Optional, ISO 8601 DateTime, <= Now (for search filter)
+- `endDate`: Optional, ISO 8601 DateTime, >= startDate, <= Now (for search filter)
 
 **Promotions**:
-- `promoCode`: Required, max 50 chars, **unique**
-- `discountType`: Required, "percent" or "fixed"
-- `discountValue`: Required, > 0
-- `startDate`: Required
-- `endDate`: Required, >= startDate
-- `minOrderAmount`: Optional, >= 0, default 0
-- `usageLimit`: Optional, >= 0, default 0 (unlimited)
+- `promoCode`: Required, string, min 1 character, max 50 characters, **unique**
+- `description`: Optional, nullable, string, max 255 characters
+- `discountType`: Required, string, pattern: `^(percent|fixed)$` (lowercase)
+- `discountValue`: Required, number (double), minimum 0.01 (phải > 0)
+- `startDate`: Required, string, ISO 8601 DateTime format
+- `endDate`: Required, string, ISO 8601 DateTime format, >= startDate
+- `minOrderAmount`: Optional, number (double), minimum 0, default 0
+- `usageLimit`: Optional, integer, minimum 1, maximum 2147483647, default 1
+- `status`: Required, string, pattern: `^(active|inactive)$` (lowercase)
+- ⚠️ **LƯU Ý**: Query parameter `Status` để filter promotions theo trạng thái **chưa được backend triển khai**. Cần thực hiện triển khai tính năng này trong backend trước khi sử dụng.
 
 **Users**:
-- `username`: Required, max 50 chars, **unique**
-- `password`: Required, min 6 chars
-- `fullName`: Required, max 100 chars
-- `role`: Required, 0 (Admin) or 1 (Staff)
+- `username`: Required, string, min 1 character, max 50 characters, **unique**
+- `password`: Required, string, min 6 characters (for create), optional nullable max 255 chars (for update - null = không đổi password)
+- `fullName`: Required, string, min 1 character, max 100 characters
+- `role`: Required, integer, minimum 0, maximum 1 (0: Admin, 1: Staff)
 
 **Inventory**:
-- `quantityChange`: Required, can be negative (decrease) or positive (increase)
-- `reason`: Required, max 255 chars
+- `quantityChange`: Required, integer (int32), can be negative (decrease) or positive (increase), no min/max constraint
+- `reason`: Required, string, min 1 character, max 255 characters
+
+### 9.6.1. Request Validation Rules - Additional Properties
+
+**⚠️ QUAN TRỌNG**: Tất cả request schemas có `additionalProperties: false`, nghĩa là:
+
+- Backend sẽ **reject** request nếu có thêm properties không được định nghĩa trong schema
+- Chỉ gửi các properties được định nghĩa trong interface
+- Không được gửi thêm properties tùy ý
+
+**Ví dụ**:
+```typescript
+// ✅ Đúng - chỉ gửi các properties được định nghĩa
+const request = {
+  categoryId: 1,
+  supplierId: 2,
+  productName: 'Coca Cola',
+  barcode: '123456',
+  price: 15000,
+  unit: 'can'
+};
+
+// ❌ Sai - có thêm property không được định nghĩa
+const request = {
+  categoryId: 1,
+  supplierId: 2,
+  productName: 'Coca Cola',
+  barcode: '123456',
+  price: 15000,
+  unit: 'can',
+  extraField: 'value'  // ❌ Backend sẽ reject request này
+};
+```
+
+**Xem thêm**: [BACKEND_API_REFERENCE.md - Section 1.8: Request Validation Rules](../api/BACKEND_API_REFERENCE.md#18-request-validation-rules)
+
+### 9.6.2. Nullable vs Optional Fields
+
+**Sự khác biệt**:
+- **Optional (`?`):** Field có thể không gửi trong request (không có trong object)
+- **Nullable (`| null`):** Field có thể gửi giá trị `null` trong request
+
+**Ví dụ**:
+```typescript
+interface CreateCustomerRequest {
+  name: string;           // Required
+  phone: string;          // Required
+  email?: string | null;   // Optional AND nullable - có thể không gửi hoặc gửi null
+  address?: string | null; // Optional AND nullable
+}
+
+// ✅ Tất cả đều hợp lệ:
+{ name: 'John', phone: '123' }                    // email và address không gửi
+{ name: 'John', phone: '123', email: null }      // email = null
+{ name: 'John', phone: '123', email: 'test@example.com' } // email có giá trị
+```
+
+**Lưu ý**: Trong tài liệu này, `field?: type` thường có nghĩa là "optional và có thể nullable" (`field?: type | null`).
+
+**Xem thêm**: [BACKEND_API_REFERENCE.md - Section 1.9: Nullable vs Optional Fields](../api/BACKEND_API_REFERENCE.md#19-nullable-vs-optional-fields)
 
 ### 9.7. Breaking Changes & Migration Notes
 
@@ -6720,7 +6312,7 @@ Chỉ chấp nhận:
 
 ```typescript
 // ❌ SAI
-const { data } = useApiPagedList(reportService, 'reports/top-products', {
+const { data } = useApiPaginated(reportService, 'reports/top-products', {
   page: 1,
   pageSize: 10,
   search: 'coca', // ❌ Backend sẽ ignore
@@ -6728,7 +6320,7 @@ const { data } = useApiPagedList(reportService, 'reports/top-products', {
 });
 
 // ✅ ĐÚNG - Top Products
-const { data } = useApiPagedList(reportService, 'reports/top-products', {
+const { data } = useApiPaginated(reportService, 'reports/top-products', {
   page: 1,
   pageSize: 10,
   startDate: '2024-01-01',
@@ -6736,7 +6328,7 @@ const { data } = useApiPagedList(reportService, 'reports/top-products', {
 });
 
 // ✅ ĐÚNG - Top Customers
-const { data } = useApiPagedList(reportService, 'reports/top-customers', {
+const { data } = useApiPaginated(reportService, 'reports/top-customers', {
   page: 1,
   pageSize: 10,
   startDate: '2024-01-01',
@@ -6804,7 +6396,7 @@ Khi implement hooks cho entity mới, test các scenarios sau:
 
 #### Query Operations:
 - [ ] `useApiList` - GET all items
-- [ ] `useApiPagedList` - GET with pagination
+- [ ] `useApiPaginated` - GET with pagination
 - [ ] `useApiDetail` - GET by ID
 - [ ] Pagination: page 1, page 2, last page
 - [ ] Search: empty, partial match, no results
@@ -7079,7 +6671,7 @@ useEffect(() => {
 const [searchTerm, setSearchTerm] = useState('');
 const debouncedSearch = useDebounce(searchTerm, 500);
 
-const { data } = useApiPagedList(productService, 'products', {
+const { data } = useApiPaginated(productService, 'products', {
   page: 1,
   pageSize: 20,
   search: debouncedSearch
@@ -7106,7 +6698,7 @@ const { data } = useApiPagedList(productService, 'products', {
 ### 📊 Mapping Summary:
 
 - **10 Entities**: Products, Categories, Customers, Suppliers, Orders, Promotions, Users, Inventory, TopProducts, TopCustomers
-- **5 Query Hooks**: useApiList, useApiPagedList, useApiInfinite, useApiDetail, useApiCustomQuery
+- **4 Query Hooks**: useApiList, useApiPaginated, useApiDetail, useApiCustomQuery (useApiInfinite không được định nghĩa trong CustomHookAPIFactory.md)
 - **5 Mutation Hooks**: useApiCreate, useApiUpdate, useApiPatch, useApiDelete, useApiCustomMutation
 - **50+ Endpoints** được document đầy đủ
 - **100% Backend Compatible** ✅
@@ -7161,7 +6753,7 @@ Tài liệu này cung cấp **code examples đầy đủ cho TẤT CẢ 52 endpo
 - ✅ **Backend Request**: HTTP method + URL + Headers + Body
 - ✅ **Backend Response**: JSON structure đầy đủ
 - ✅ **Authorization**: Rõ ràng (Admin, Staff, Public)
-- ✅ **Hooks**: useApiList, useApiPagedList, useApiCreate, useApiUpdate, useApiPatch, useApiDelete, useApiCustomQuery, useApiCustomMutation
+- ✅ **Hooks**: useApiList, useApiPaginated, useApiDetail, useApiCreate, useApiUpdate, useApiPatch, useApiDelete, useApiCustomQuery, useApiCustomMutation
 - ✅ **Error Handling**: Try-catch, message.error, loading states
 - ✅ **Form Validation**: Rules, required fields, max length
 

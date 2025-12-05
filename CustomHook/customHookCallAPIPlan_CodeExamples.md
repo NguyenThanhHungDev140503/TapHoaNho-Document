@@ -3,6 +3,28 @@
 > **Tài liệu này**: Cung cấp code examples đầy đủ cho **TẤT CẢ 52 endpoints** trong hệ thống TapHoaNho.
 >
 > **Liên kết**: Đây là phần mở rộng của `customHookCallAPIPlan.md`
+>
+> **Hybrid Approach**: Tất cả examples sử dụng **Core API Infrastructure** (ApiServiceInterface + BaseApiService + apiResponseAdapter + API types) với xử lý `ApiResponse<T>` wrapper và `PagedList<T>` pagination tự động.
+
+## Lưu ý về Hybrid Approach
+
+Tất cả code examples trong tài liệu này sử dụng:
+
+1. **ApiServiceInterface**: Định nghĩa contract cho tất cả API services (getAll, getPaginated, getById, create, update, patch, delete, custom)
+2. **BaseApiService**: Base class implement `ApiServiceInterface`, xử lý `ApiResponse<T>` và `PagedList<T>` ở một chỗ
+3. **apiResponseAdapter**: Helper (ví dụ `unwrapResponse`) được BaseApiService dùng để unwrap và check `isError`
+4. **API types (`api.types.ts`)**: Re-export `ApiResponse`, `PagedList`, `PagedRequest` để dùng thống nhất trong toàn app
+5. **Feature-specific services**: Mỗi feature extend BaseApiService (ví dụ: `ProductApiService`, `UserApiService`) và thêm custom methods
+
+**Import pattern**:
+```typescript
+// Core API imports
+import type { ApiResponse, PagedList, PagedRequest } from '@/lib/api/types/api.types';
+import { BaseApiService } from '@/lib/api/base/BaseApiService';
+
+// Feature-specific service
+import { productApiService } from '@/features/products/api/ProductApiService';
+```
 
 ---
 
@@ -28,27 +50,19 @@
 ### 1.1. GET /api/admin/products - List Products
 
 **Authorization**: Admin only  
-**Hook**: `useApiPagedList`
+**Hook**: `useApiPaginated`
 
 **Frontend Code**:
 ```typescript
-import { useApiPagedList } from '@/hooks/useApi';
-import { productService } from '@/services/productService';
+import { useQuery } from '@tanstack/react-query';
+import { productApiService } from '@/features/products/api/ProductApiService';
+import type { PagedList, PagedRequest } from '@/lib/axios';
+import type { ProductEntity } from '@/features/products/types/entity';
 import { Table, Input, Select, InputNumber, Space, Spin, Alert } from 'antd';
+import { useState } from 'react';
 
 function ProductListPage() {
-  const { 
-    data, 
-    isLoading, 
-    error,
-    pagination,
-    setPage,
-    setPageSize,
-    setSearch,
-    setSortBy,
-    setSortDesc,
-    setFilters
-  } = useApiPagedList(productService, 'products', {
+  const [pagination, setPagination] = useState<PagedRequest>({
     page: 1,
     pageSize: 20,
     search: '',
@@ -58,7 +72,16 @@ function ProductListPage() {
     categoryId: undefined,
     supplierId: undefined,
     minPrice: undefined,
-    maxPrice: undefined
+    maxPrice: undefined,
+  });
+
+  const { 
+    data, 
+    isLoading, 
+    error,
+  } = useQuery<PagedList<ProductEntity>>({
+    queryKey: ['products', 'paginated', pagination],
+    queryFn: () => productApiService.getPaginated(pagination),
   });
 
   if (isLoading) return <Spin />;
@@ -69,7 +92,7 @@ function ProductListPage() {
       {/* Search */}
       <Input.Search
         placeholder="Tìm kiếm sản phẩm..."
-        onSearch={(value) => setSearch(value)}
+        onSearch={(value) => setPagination(prev => ({ ...prev, search: value, page: 1 }))}
         style={{ width: 300, marginBottom: 16 }}
       />
 
@@ -78,7 +101,7 @@ function ProductListPage() {
         <Select
           placeholder="Danh mục"
           style={{ width: 200 }}
-          onChange={(value) => setFilters({ categoryId: value })}
+          onChange={(value) => setPagination(prev => ({ ...prev, categoryId: value, page: 1 }))}
           allowClear
         >
           <Select.Option value={1}>Nước giải khát</Select.Option>
@@ -87,13 +110,13 @@ function ProductListPage() {
 
         <InputNumber
           placeholder="Giá tối thiểu"
-          onChange={(value) => setFilters({ minPrice: value })}
+          onChange={(value) => setPagination(prev => ({ ...prev, minPrice: value, page: 1 }))}
           style={{ width: 150 }}
         />
 
         <InputNumber
           placeholder="Giá tối đa"
-          onChange={(value) => setFilters({ maxPrice: value })}
+          onChange={(value) => setPagination(prev => ({ ...prev, maxPrice: value, page: 1 }))}
           style={{ width: 150 }}
         />
       </Space>
@@ -103,18 +126,20 @@ function ProductListPage() {
         dataSource={data?.items || []}
         rowKey="id"
         pagination={{
-          current: pagination.page,
-          pageSize: pagination.pageSize,
+          current: data?.page || 1,
+          pageSize: data?.pageSize || 20,
           total: data?.totalCount || 0,
           onChange: (page, pageSize) => {
-            setPage(page);
-            setPageSize(pageSize);
+            setPagination(prev => ({ ...prev, page, pageSize }));
           }
         }}
         onChange={(pagination, filters, sorter) => {
           if (sorter.field) {
-            setSortBy(sorter.field as string);
-            setSortDesc(sorter.order === 'descend');
+            setPagination(prev => ({
+              ...prev,
+              sortBy: sorter.field as string,
+              sortDesc: sorter.order === 'descend',
+            }));
           }
         }}
       >
@@ -184,15 +209,15 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 **Frontend Code**:
 ```typescript
 import { useApiDetail } from '@/hooks/useApi';
-import { productService } from '@/services/productService';
+import { productApiService } from '@/features/products/api/ProductApiService';
 import { Descriptions, Spin, Alert, Empty, Button } from 'antd';
 
 function ProductDetailPage({ productId }: { productId: number }) {
-  const { data, isLoading, error, refetch } = useApiDetail(
-    productService,
-    'products',
-    productId
-  );
+  const { data, isLoading, error, refetch } = useApiDetail({
+    apiService: productApiService,
+    entity: 'products',
+    id: productId,
+  });
 
   if (isLoading) return <Spin />;
   if (error) return <Alert message={error.message} type="error" />;
@@ -256,18 +281,22 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 **Frontend Code**:
 ```typescript
 import { useApiCreate } from '@/hooks/useApi';
-import { productService } from '@/services/productService';
+import { productApiService } from '@/features/products/api/ProductApiService';
 import { Form, Input, InputNumber, Select, Button, message } from 'antd';
 
 function CreateProductForm() {
   const [form] = Form.useForm();
-  const { mutate, isPending } = useApiCreate(productService, 'products', {
-    onSuccess: (data) => {
-      message.success('Tạo sản phẩm thành công!');
-      form.resetFields();
-    },
-    onError: (error) => {
-      message.error(error.message);
+  const { mutate, isPending } = useApiCreate({
+    apiService: productApiService,
+    entity: 'products',
+    options: {
+      onSuccess: (data) => {
+        message.success('Tạo sản phẩm thành công!');
+        form.resetFields();
+      },
+      onError: (error) => {
+        message.error(error.message);
+      }
     }
   });
 
@@ -282,6 +311,7 @@ function CreateProductForm() {
         name="productName"
         rules={[
           { required: true, message: 'Vui lòng nhập tên sản phẩm' },
+          { min: 1, message: 'Tên sản phẩm phải có ít nhất 1 ký tự' },
           { max: 100, message: 'Tên sản phẩm tối đa 100 ký tự' }
         ]}
       >
@@ -293,6 +323,7 @@ function CreateProductForm() {
         name="barcode"
         rules={[
           { required: true, message: 'Vui lòng nhập mã vạch' },
+          { min: 1, message: 'Mã vạch phải có ít nhất 1 ký tự' },
           { max: 50, message: 'Mã vạch tối đa 50 ký tự' }
         ]}
       >
@@ -304,7 +335,7 @@ function CreateProductForm() {
         name="price"
         rules={[
           { required: true, message: 'Vui lòng nhập giá' },
-          { type: 'number', min: 1, message: 'Giá phải lớn hơn 0' }
+          { type: 'number', min: 0.01, message: 'Giá phải lớn hơn hoặc bằng 0.01' }
         ]}
       >
         <InputNumber style={{ width: '100%' }} placeholder="12000" />
@@ -403,7 +434,7 @@ Content-Type: application/json
 **Frontend Code**:
 ```typescript
 import { useApiUpdate, useApiDetail } from '@/hooks/useApi';
-import { productService } from '@/services/productService';
+import { productApiService } from '@/features/products/api/ProductApiService';
 import { Form, Input, InputNumber, Select, Button, message, Spin } from 'antd';
 import { useEffect } from 'react';
 
@@ -411,15 +442,23 @@ function UpdateProductForm({ productId }: { productId: number }) {
   const [form] = Form.useForm();
 
   // Load existing data
-  const { data: product, isLoading } = useApiDetail(productService, 'products', productId);
+  const { data: product, isLoading } = useApiDetail({
+    apiService: productApiService,
+    entity: 'products',
+    id: productId,
+  });
 
   // Update mutation
-  const { mutate, isPending } = useApiUpdate(productService, 'products', {
-    onSuccess: () => {
-      message.success('Cập nhật sản phẩm thành công!');
-    },
-    onError: (error) => {
-      message.error(error.message);
+  const { mutate, isPending } = useApiUpdate({
+    apiService: productApiService,
+    entity: 'products',
+    options: {
+      onSuccess: () => {
+        message.success('Cập nhật sản phẩm thành công!');
+      },
+      onError: (error) => {
+        message.error(error.message);
+      }
     }
   });
 
@@ -446,7 +485,15 @@ function UpdateProductForm({ productId }: { productId: number }) {
       <Form.Item label="Giá" name="price" rules={[{ required: true }]}>
         <InputNumber style={{ width: '100%' }} />
       </Form.Item>
-      <Form.Item label="Đơn vị" name="unit" rules={[{ required: true }]}>
+      <Form.Item 
+        label="Đơn vị" 
+        name="unit" 
+        rules={[
+          { required: true, message: 'Vui lòng nhập đơn vị' },
+          { min: 1, message: 'Đơn vị phải có ít nhất 1 ký tự' },
+          { max: 20, message: 'Đơn vị tối đa 20 ký tự' }
+        ]}
+      >
         <Input />
       </Form.Item>
       <Form.Item label="Danh mục" name="categoryId" rules={[{ required: true }]}>
@@ -521,17 +568,21 @@ Content-Type: application/json
 **Frontend Code**:
 ```typescript
 import { useApiDelete } from '@/hooks/useApi';
-import { productService } from '@/services/productService';
+import { productApiService } from '@/features/products/api/ProductApiService';
 import { Button, Popconfirm, message } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 
 function DeleteProductButton({ productId, productName }: { productId: number; productName: string }) {
-  const { mutate, isPending } = useApiDelete(productService, 'products', {
-    onSuccess: () => {
-      message.success('Xóa sản phẩm thành công!');
-    },
-    onError: (error) => {
-      message.error(error.message);
+  const { mutate, isPending } = useApiDelete({
+    apiService: productApiService,
+    entity: 'products',
+    options: {
+      onSuccess: () => {
+        message.success('Xóa sản phẩm thành công!');
+      },
+      onError: (error) => {
+        message.error(error.message);
+      }
     }
   });
 
@@ -585,18 +636,22 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ### 2.1. GET /api/admin/categories - List Categories
 
-**Authorization**: Admin only | **Hook**: `useApiPagedList`
+**Authorization**: Admin only | **Hook**: `useApiPaginated`
 
 **Frontend Code**:
 ```typescript
-import { useApiPagedList } from '@/hooks/useApi';
-import { categoryService } from '@/services/categoryService';
+import { useQuery } from '@tanstack/react-query';
+import { categoryApiService } from '@/features/categories/api/CategoryApiService';
+import type { PagedList, PagedRequest } from '@/lib/axios';
 
-const { data, isLoading } = useApiPagedList(categoryService, 'categories', {
+const { data, isLoading } = useQuery({
+  queryKey: ['categories', 'paginated', { page: 1, pageSize: 20 }],
+  queryFn: () => categoryApiService.getPaginated({
   page: 1,
   pageSize: 20,
-  sortBy: 'CategoryName',
-  sortDesc: false
+    sortBy: 'CategoryName',
+    sortDesc: false,
+  } as PagedRequest),
 });
 ```
 
@@ -631,9 +686,12 @@ const { data, isLoading } = useApiPagedList(categoryService, 'categories', {
 **Frontend Code**:
 ```typescript
 import { useApiCreate } from '@/hooks/useApi';
-import { categoryService } from '@/services/categoryService';
+import { categoryApiService } from '@/features/categories/api/CategoryApiService';
 
-const { mutate } = useApiCreate(categoryService, 'categories');
+const { mutate } = useApiCreate({
+  apiService: categoryApiService,
+  entity: 'categories',
+});
 mutate({ categoryName: 'Bánh kẹo' });
 ```
 
@@ -669,10 +727,13 @@ Content-Type: application/json
 **Frontend Code**:
 ```typescript
 import { useApiUpdate } from '@/hooks/useApi';
-import { categoryService } from '@/services/categoryService';
+import { categoryApiService } from '@/features/categories/api/CategoryApiService';
 
-const { mutate } = useApiUpdate(categoryService, 'categories');
-mutate({ id: 3, categoryName: 'Bánh kẹo & Snack' });
+const { mutate } = useApiUpdate({
+  apiService: categoryApiService,
+  entity: 'categories',
+});
+mutate({ id: 3, data: { categoryName: 'Bánh kẹo & Snack' } });
 ```
 
 **Request**:
@@ -692,9 +753,12 @@ Content-Type: application/json
 **Frontend Code**:
 ```typescript
 import { useApiDelete } from '@/hooks/useApi';
-import { categoryService } from '@/services/categoryService';
+import { categoryApiService } from '@/features/categories/api/CategoryApiService';
 
-const { mutate } = useApiDelete(categoryService, 'categories');
+const { mutate } = useApiDelete({
+  apiService: categoryApiService,
+  entity: 'categories',
+});
 mutate(3);
 ```
 
@@ -706,19 +770,27 @@ mutate(3);
 
 ### 3.1. GET /api/admin/customers - List Customers
 
-**Authorization**: Admin & Staff | **Hook**: `useApiPagedList`
+**Authorization**: Admin & Staff | **Hook**: `useApiPaginated`
 
 **Frontend Code**:
 ```typescript
-import { useApiPagedList } from '@/hooks/useApi';
-import { customerService } from '@/services/customerService';
+import { useQuery } from '@tanstack/react-query';
+import { customerApiService } from '@/features/customers/api/CustomerApiService';
+import type { PagedList, PagedRequest } from '@/lib/axios';
 
-const { data } = useApiPagedList(customerService, 'customers', {
+const { data } = useQuery({
+  queryKey: ['customers', 'paginated', {
   page: 1,
   pageSize: 20,
-  search: 'Nguyễn',
-  sortBy: 'Name',
-  sortDesc: false
+    search: 'Nguyễn',
+    sortBy: 'Name',
+    sortDesc: false,
+  } as PagedRequest],
+  queryFn: () => customerApiService.getPaginated({
+    search: 'Nguyễn',
+    sortBy: 'Name',
+    sortDesc: false,
+  } as PagedRequest),
 });
 ```
 
@@ -753,9 +825,12 @@ const { data } = useApiPagedList(customerService, 'customers', {
 **Frontend Code**:
 ```typescript
 import { useApiCreate } from '@/hooks/useApi';
-import { customerService } from '@/services/customerService';
+import { customerApiService } from '@/features/customers/api/CustomerApiService';
 
-const { mutate } = useApiCreate(customerService, 'customers');
+const { mutate } = useApiCreate({
+  apiService: customerApiService,
+  entity: 'customers',
+});
 mutate({
   name: 'Trần Thị B',
   phone: '0912345678',
@@ -783,17 +858,25 @@ Content-Type: application/json
 
 ### 4.1. GET /api/admin/suppliers - List Suppliers
 
-**Authorization**: Admin only | **Hook**: `useApiPagedList`
+**Authorization**: Admin only | **Hook**: `useApiPaginated`
 
 **Frontend Code**:
 ```typescript
-import { useApiPagedList } from '@/hooks/useApi';
-import { supplierService } from '@/services/supplierService';
+import { useQuery } from '@tanstack/react-query';
+import { supplierApiService } from '@/features/suppliers/api/SupplierApiService';
+import type { PagedList, PagedRequest } from '@/lib/axios';
 
-const { data } = useApiPagedList(supplierService, 'suppliers', {
-  page: 1,
-  pageSize: 20,
-  sortBy: 'Name'
+const { data } = useQuery({
+  queryKey: ['suppliers', 'paginated', {
+    page: 1,
+    pageSize: 20,
+    sortBy: 'Name',
+  } as PagedRequest],
+  queryFn: () => supplierApiService.getPaginated({
+    page: 1,
+    pageSize: 20,
+    sortBy: 'Name',
+  } as PagedRequest),
 });
 ```
 
@@ -824,9 +907,12 @@ const { data } = useApiPagedList(supplierService, 'suppliers', {
 **Frontend Code**:
 ```typescript
 import { useApiCreate } from '@/hooks/useApi';
-import { supplierService } from '@/services/supplierService';
+import { supplierApiService } from '@/features/suppliers/api/SupplierApiService';
 
-const { mutate } = useApiCreate(supplierService, 'suppliers');
+const { mutate } = useApiCreate({
+  apiService: supplierApiService,
+  entity: 'suppliers',
+});
 mutate({
   name: 'Pepsi Vietnam',
   phone: '0287654321',
@@ -841,23 +927,36 @@ mutate({
 
 ### 5.1. GET /api/admin/orders - List Orders
 
-**Authorization**: Admin & Staff | **Hook**: `useApiPagedList`
+**Authorization**: Admin & Staff | **Hook**: `useApiPaginated`
 
 **Frontend Code**:
 ```typescript
-import { useApiPagedList } from '@/hooks/useApi';
-import { orderService } from '@/services/orderService';
+import { useQuery } from '@tanstack/react-query';
+import { orderApiService } from '@/features/orders/api/OrderApiService';
+import type { PagedList, PagedRequest } from '@/lib/axios';
 
-const { data } = useApiPagedList(orderService, 'orders', {
+const { data } = useQuery({
+  queryKey: ['orders', 'paginated', {
   page: 1,
   pageSize: 20,
   sortBy: 'OrderDate',
   sortDesc: true,
   // Filters
-  status: 'Pending',
-  customerId: undefined,
-  startDate: '2024-01-01',
-  endDate: '2024-01-31'
+    status: 'Pending',
+    customerId: undefined,
+    startDate: '2024-01-01',
+    endDate: '2024-01-31',
+  } as PagedRequest],
+  queryFn: () => orderApiService.getPaginated({
+    page: 1,
+    pageSize: 20,
+    sortBy: 'OrderDate',
+    sortDesc: true,
+    status: 'Pending',
+    customerId: undefined,
+    startDate: '2024-01-01',
+    endDate: '2024-01-31',
+  } as PagedRequest),
 });
 ```
 
@@ -895,9 +994,12 @@ const { data } = useApiPagedList(orderService, 'orders', {
 **Frontend Code**:
 ```typescript
 import { useApiCreate } from '@/hooks/useApi';
-import { orderService } from '@/services/orderService';
+import { orderApiService } from '@/features/orders/api/OrderApiService';
 
-const { mutate } = useApiCreate(orderService, 'orders');
+const { mutate } = useApiCreate({
+  apiService: orderApiService,
+  entity: 'orders',
+});
 mutate({
   customerId: 1,
   promotionId: 2,
@@ -969,23 +1071,17 @@ Content-Type: application/json
 **Frontend Code**:
 ```typescript
 import { useApiPatch } from '@/hooks/useApi';
-import { orderService } from '@/services/orderService';
+import { orderApiService } from '@/features/orders/api/OrderApiService';
 
-const { mutate } = useApiPatch(orderService, 'orders');
-
-// Update to Paid
-mutate({
-  id: 1,
-  status: 'Paid'
+// Update to Paid - Sử dụng custom method vì endpoint là /orders/{id}/status
+// ⚠️ LƯU Ý: Khi update order status, phải dùng lowercase "paid" hoặc "canceled"
+const { mutate: updateStatus } = useApiCustomMutation({
+  entity: 'orders',
+  mutationFn: ({ orderId, status }: { orderId: number; status: string }) =>
+    orderApiService.custom('patch', `${orderId}/status`, { status }),
 });
 
-// Or use custom mutation
-const { mutate: updateStatus } = useApiCustomMutation(orderService, 'orders');
-updateStatus({
-  method: 'patch',
-  path: `${orderId}/status`,
-  data: { status: 'Paid' }
-});
+updateStatus({ orderId: 1, status: 'paid' }); // lowercase: "paid" | "canceled"
 ```
 
 **Request**:
@@ -994,7 +1090,7 @@ PATCH /api/admin/orders/1/status
 Content-Type: application/json
 
 {
-  "status": "Paid"
+  "status": "paid"  // ⚠️ PHẢI dùng lowercase: "paid" | "canceled"
 }
 ```
 
@@ -1013,7 +1109,10 @@ Content-Type: application/json
 }
 ```
 
-**Allowed Status Values**: `"Pending"`, `"Paid"`, `"Cancelled"`
+**Status Values**:
+- **For search/filter**: `"Pending"`, `"Paid"`, `"Cancelled"` (PascalCase)
+- **For update status**: `"paid"`, `"canceled"` (lowercase) - ⚠️ **QUAN TRỌNG**: Phải dùng lowercase khi update
+- **Response**: Backend có thể trả về PascalCase `"Pending"`, `"Paid"`, `"Cancelled"` trong response data
 
 ### 5.4. POST /api/admin/orders/{orderId}/items - Add Order Item
 
@@ -1022,13 +1121,17 @@ Content-Type: application/json
 **Frontend Code**:
 ```typescript
 import { useApiCustomMutation } from '@/hooks/useApi';
-import { orderService } from '@/services/orderService';
+import { orderApiService } from '@/features/orders/api/OrderApiService';
 
-const { mutate } = useApiCustomMutation(orderService, 'orders');
+const { mutate } = useApiCustomMutation({
+  entity: 'orders',
+  mutationFn: ({ orderId, item }: { orderId: number; item: any }) =>
+    orderApiService.custom('post', `${orderId}/items`, item),
+});
+
 mutate({
-  method: 'post',
-  path: `${orderId}/items`,
-  data: {
+  orderId: 1,
+  item: {
     productId: 3,
     quantity: 2,
     price: 15000
@@ -1072,12 +1175,17 @@ Content-Type: application/json
 **Frontend Code**:
 ```typescript
 import { useApiCustomMutation } from '@/hooks/useApi';
-import { orderService } from '@/services/orderService';
+import { orderApiService } from '@/features/orders/api/OrderApiService';
 
-const { mutate } = useApiCustomMutation(orderService, 'orders');
+const { mutate } = useApiCustomMutation({
+  entity: 'orders',
+  mutationFn: ({ orderId, itemId, data }: { orderId: number; itemId: number; data: any }) =>
+    orderApiService.custom('put', `${orderId}/items/${itemId}`, data),
+});
+
 mutate({
-  method: 'put',
-  path: `${orderId}/items/${itemId}`,
+  orderId: 1,
+  itemId: 2,
   data: {
     quantity: 5,
     price: 15000
@@ -1092,13 +1200,15 @@ mutate({
 **Frontend Code**:
 ```typescript
 import { useApiCustomMutation } from '@/hooks/useApi';
-import { orderService } from '@/services/orderService';
+import { orderApiService } from '@/features/orders/api/OrderApiService';
 
-const { mutate } = useApiCustomMutation(orderService, 'orders');
-mutate({
-  method: 'delete',
-  path: `${orderId}/items/${itemId}`
+const { mutate } = useApiCustomMutation({
+  entity: 'orders',
+  mutationFn: ({ orderId, itemId }: { orderId: number; itemId: number }) =>
+    orderApiService.custom('delete', `${orderId}/items/${itemId}`),
 });
+
+mutate({ orderId: 1, itemId: 2 });
 ```
 
 ### 5.7. GET /api/admin/orders/{id}/invoice - Download Invoice PDF
@@ -1143,19 +1253,31 @@ const downloadInvoice = async (orderId: number) => {
 
 ### 6.1. GET /api/admin/promotions - List Promotions
 
-**Authorization**: Admin only | **Hook**: `useApiPagedList`
+**Authorization**: Admin only | **Hook**: `useApiPaginated`
 
 **Frontend Code**:
 ```typescript
-import { useApiPagedList } from '@/hooks/useApi';
-import { promotionService } from '@/services/promotionService';
+import { useQuery } from '@tanstack/react-query';
+import { promotionApiService } from '@/features/promotions/api/PromotionApiService';
+import type { PagedList, PagedRequest } from '@/lib/axios';
 
-const { data } = useApiPagedList(promotionService, 'promotions', {
+const { data } = useQuery({
+  queryKey: ['promotions', 'paginated', {
   page: 1,
   pageSize: 20,
   sortBy: 'StartDate',
   sortDesc: true,
-  status: 'Active' // Filter by status
+    // ⚠️ LƯU Ý: Filter Status chưa được backend triển khai, cần thực hiện triển khai
+    // status: 'active', // CHƯA ĐƯỢC HỖ TRỢ - Comment out cho đến khi backend triển khai
+  } as PagedRequest],
+  queryFn: () => promotionApiService.getPaginated({
+    page: 1,
+    pageSize: 20,
+    sortBy: 'StartDate',
+    sortDesc: true,
+    // ⚠️ LƯU Ý: Filter Status chưa được backend triển khai
+    // status: 'active', // CHƯA ĐƯỢC HỖ TRỢ
+  } as PagedRequest),
 });
 ```
 
@@ -1175,7 +1297,7 @@ const { data } = useApiPagedList(promotionService, 'promotions', {
         "minOrderAmount": 100000,
         "usageLimit": 100,
         "usedCount": 25,
-        "status": "Active"
+        "status": "active"  // lowercase: "active" | "inactive"
       }
     ]
   },
@@ -1190,9 +1312,12 @@ const { data } = useApiPagedList(promotionService, 'promotions', {
 **Frontend Code**:
 ```typescript
 import { useApiCreate } from '@/hooks/useApi';
-import { promotionService } from '@/services/promotionService';
+import { promotionApiService } from '@/features/promotions/api/PromotionApiService';
 
-const { mutate } = useApiCreate(promotionService, 'promotions');
+const { mutate } = useApiCreate({
+  apiService: promotionApiService,
+  entity: 'promotions',
+});
 mutate({
   promoCode: 'NEWYEAR2025',
   discountType: 'fixed',
@@ -1211,17 +1336,15 @@ mutate({
 **Frontend Code**:
 ```typescript
 import { useApiCustomMutation } from '@/hooks/useApi';
-import { promotionService } from '@/services/promotionService';
+import { promotionApiService } from '@/features/promotions/api/PromotionApiService';
 
-const { mutate, data } = useApiCustomMutation(promotionService, 'promotions');
-
-mutate({
-  method: 'post',
-  path: 'validate',
-  data: {
-    promoCode: 'SUMMER2024'
-  }
+const { mutate, data } = useApiCustomMutation({
+  entity: 'promotions',
+  mutationFn: ({ promoCode }: { promoCode: string }) =>
+    promotionApiService.custom('post', 'validate', { promoCode }),
 });
+
+mutate({ promoCode: 'SUMMER2024' });
 ```
 
 **Request**:
@@ -1256,19 +1379,29 @@ Content-Type: application/json
 
 ### 7.1. GET /api/admin/users - List Users
 
-**Authorization**: Admin only | **Hook**: `useApiPagedList`
+**Authorization**: Admin only | **Hook**: `useApiPaginated`
 
 **Frontend Code**:
 ```typescript
-import { useApiPagedList } from '@/hooks/useApi';
-import { userService } from '@/services/userService';
+import { useQuery } from '@tanstack/react-query';
+import { userApiService } from '@/features/users/api/UserApiService';
+import type { PagedList, PagedRequest } from '@/lib/axios';
 
-const { data } = useApiPagedList(userService, 'users', {
+const { data } = useQuery({
+  queryKey: ['users', 'paginated', {
   page: 1,
   pageSize: 20,
   sortBy: 'CreatedAt',
   sortDesc: true,
-  role: 1 // Filter by role (0 = Admin, 1 = Staff)
+    role: 1, // Filter by role (0 = Admin, 1 = Staff)
+  } as PagedRequest],
+  queryFn: () => userApiService.getPaginated({
+    page: 1,
+    pageSize: 20,
+    sortBy: 'CreatedAt',
+    sortDesc: true,
+    role: 1,
+  } as PagedRequest),
 });
 ```
 
@@ -1305,9 +1438,12 @@ const { data } = useApiPagedList(userService, 'users', {
 **Frontend Code**:
 ```typescript
 import { useApiCreate } from '@/hooks/useApi';
-import { userService } from '@/services/userService';
+import { userApiService } from '@/features/users/api/UserApiService';
 
-const { mutate } = useApiCreate(userService, 'users');
+const { mutate } = useApiCreate({
+  apiService: userApiService,
+  entity: 'users',
+});
 mutate({
   username: 'staff02',
   password: 'password123',
@@ -1322,19 +1458,29 @@ mutate({
 
 ### 8.1. GET /api/admin/inventory - List Inventory
 
-**Authorization**: Admin & Staff | **Hook**: `useApiPagedList`
+**Authorization**: Admin & Staff | **Hook**: `useApiPaginated`
 
 **Frontend Code**:
 ```typescript
-import { useApiPagedList } from '@/hooks/useApi';
-import { inventoryService } from '@/services/inventoryService';
+import { useQuery } from '@tanstack/react-query';
+import { inventoryApiService } from '@/features/inventory/api/InventoryApiService';
+import type { PagedList, PagedRequest } from '@/lib/axios';
 
-const { data } = useApiPagedList(inventoryService, 'inventory', {
+const { data } = useQuery({
+  queryKey: ['inventory', 'paginated', {
   page: 1,
   pageSize: 20,
   sortBy: 'Quantity',
   sortDesc: false,
-  status: 'LowStock' // Filter by status
+    status: 'LowStock', // Filter by status
+  } as PagedRequest],
+  queryFn: () => inventoryApiService.getPaginated({
+    page: 1,
+    pageSize: 20,
+    sortBy: 'Quantity',
+    sortDesc: false,
+    status: 'LowStock',
+  } as PagedRequest),
 });
 ```
 
@@ -1366,22 +1512,26 @@ const { data } = useApiPagedList(inventoryService, 'inventory', {
 **Frontend Code**:
 ```typescript
 import { useApiPatch } from '@/hooks/useApi';
-import { inventoryService } from '@/services/inventoryService';
+import { inventoryApiService } from '@/features/inventory/api/InventoryApiService';
 
-const { mutate } = useApiPatch(inventoryService, 'inventory');
+const { mutate } = useApiPatch(inventoryApiService, 'inventory');
 
 // Nhập hàng (tăng tồn kho)
 mutate({
   id: productId,
-  quantityChange: 100,
-  reason: 'Nhập hàng từ nhà cung cấp'
+  data: {
+    quantityChange: 100,
+    reason: 'Nhập hàng từ nhà cung cấp'
+  }
 });
 
 // Xuất hàng (giảm tồn kho)
 mutate({
   id: productId,
-  quantityChange: -50,
-  reason: 'Xuất hàng bán lẻ'
+  data: {
+    quantityChange: -50,
+    reason: 'Xuất hàng bán lẻ'
+  }
 });
 ```
 
@@ -1431,12 +1581,12 @@ Content-Type: application/json
 
 **Frontend Code**:
 ```typescript
-import { useApiCustomQuery } from '@/hooks/useApi';
-import { inventoryService } from '@/services/inventoryService';
+import { useQuery } from '@tanstack/react-query';
+import { inventoryApiService } from '@/features/inventory/api/InventoryApiService';
 
-const { data } = useApiCustomQuery(inventoryService, 'inventory', {
-  method: 'get',
-  path: 'low-stock'
+const { data } = useQuery({
+  queryKey: ['inventory', 'low-stock'],
+  queryFn: () => inventoryApiService.custom('get', 'low-stock'),
 });
 ```
 
@@ -1475,12 +1625,13 @@ const { data } = useApiCustomQuery(inventoryService, 'inventory', {
 
 **Frontend Code**:
 ```typescript
-import { useApiCustomQuery } from '@/hooks/useApi';
-import { inventoryService } from '@/services/inventoryService';
+import { useQuery } from '@tanstack/react-query';
+import { inventoryApiService } from '@/features/inventory/api/InventoryApiService';
 
-const { data } = useApiCustomQuery(inventoryService, 'inventory', {
-  method: 'get',
-  path: `${productId}/history`
+const { data } = useQuery({
+  queryKey: ['inventory', 'history', productId],
+  queryFn: () => inventoryApiService.custom('get', `${productId}/history`),
+  enabled: !!productId,
 });
 ```
 
@@ -1524,18 +1675,16 @@ const { data } = useApiCustomQuery(inventoryService, 'inventory', {
 
 **Frontend Code**:
 ```typescript
-import { useApiCustomQuery } from '@/hooks/useApi';
-import { reportService } from '@/services/reportService';
+import { useQuery } from '@tanstack/react-query';
+import { reportApiService } from '@/features/reports/api/ReportApiService';
 
-// Sử dụng useApiCustomQuery để consistent với pattern của hệ thống
-// và dễ dàng extend với custom logic (caching, error handling, etc.)
-const { data } = useApiCustomQuery(reportService, 'reports', {
-  method: 'get',
-  path: 'revenue',
-  params: {
+// Sử dụng useQuery với custom method từ BaseApiService
+const { data } = useQuery({
+  queryKey: ['reports', 'revenue', { startDate: '2024-01-01', endDate: '2024-01-31' }],
+  queryFn: () => reportApiService.custom('get', 'revenue', undefined, {
     startDate: '2024-01-01',
     endDate: '2024-01-31'
-  }
+  }),
 });
 ```
 
@@ -1568,18 +1717,15 @@ const { data } = useApiCustomQuery(reportService, 'reports', {
 
 **Frontend Code**:
 ```typescript
-import { useApiCustomQuery } from '@/hooks/useApi';
-import { reportService } from '@/services/reportService';
+import { useQuery } from '@tanstack/react-query';
+import { reportApiService } from '@/features/reports/api/ReportApiService';
 
-// Sử dụng useApiCustomQuery để consistent với pattern của hệ thống
-// và dễ dàng extend với custom logic (caching, error handling, etc.)
-const { data } = useApiCustomQuery(reportService, 'reports', {
-  method: 'get',
-  path: 'sales',
-  params: {
+const { data } = useQuery({
+  queryKey: ['reports', 'sales', { startDate: '2024-01-01', endDate: '2024-01-31' }],
+  queryFn: () => reportApiService.custom('get', 'sales', undefined, {
     startDate: '2024-01-01',
     endDate: '2024-01-31'
-  }
+  }),
 });
 ```
 
@@ -1607,14 +1753,16 @@ const { data } = useApiCustomQuery(reportService, 'reports', {
 
 ### 9.3. GET /api/admin/reports/top-products - Top Products
 
-**Authorization**: Admin only | **Hook**: `useApiPagedList`
+**Authorization**: Admin only | **Hook**: `useApiPaginated`
 
 **Frontend Code**:
 ```typescript
-import { useApiPagedList } from '@/hooks/useApi';
-import { reportService } from '@/services/reportService';
+import { useQuery } from '@tanstack/react-query';
+import { reportApiService } from '@/features/reports/api/ReportApiService';
+import type { PagedList, PagedRequest } from '@/lib/axios';
 
-const { data } = useApiPagedList(reportService, 'reports/top-products', {
+const { data } = useQuery({
+  queryKey: ['reports', 'top-products', {
   page: 1,
   pageSize: 10,
   startDate: '2024-01-01',
@@ -1659,14 +1807,16 @@ const { data } = useApiPagedList(reportService, 'reports/top-products', {
 
 ### 9.4. GET /api/admin/reports/top-customers - Top Customers
 
-**Authorization**: Admin only | **Hook**: `useApiPagedList`
+**Authorization**: Admin only | **Hook**: `useApiPaginated`
 
 **Frontend Code**:
 ```typescript
-import { useApiPagedList } from '@/hooks/useApi';
-import { reportService } from '@/services/reportService';
+import { useQuery } from '@tanstack/react-query';
+import { reportApiService } from '@/features/reports/api/ReportApiService';
+import type { PagedList, PagedRequest } from '@/lib/axios';
 
-const { data } = useApiPagedList(reportService, 'reports/top-customers', {
+const { data } = useQuery({
+  queryKey: ['reports', 'top-customers', {
   page: 1,
   pageSize: 10,
   startDate: '2024-01-01',
@@ -1900,7 +2050,7 @@ Content-Type: application/json
 
 - **10 Modules**: Products, Categories, Customers, Suppliers, Orders, Promotions, Users, Inventory, Reports, Authentication
 - **53 Endpoints**: Tất cả đều có code examples đầy đủ
-- **Frontend Hooks**: useApiList, useApiPagedList, useApiDetail, useApiCreate, useApiUpdate, useApiPatch, useApiDelete, useApiCustomQuery, useApiCustomMutation
+- **Frontend Hooks**: useApiList, useApiPaginated, useApiDetail, useApiCreate, useApiUpdate, useApiPatch, useApiDelete, useApiCustomQuery, useApiCustomMutation
 - **Request/Response**: Đầy đủ HTTP request và JSON response cho mỗi endpoint
 - **Authorization**: Rõ ràng cho từng endpoint (Admin, Staff, Admin & Staff, Public)
 
