@@ -140,20 +140,6 @@ const response = await axios.get('/api/admin/products', {
 });
 ```
 
-**Helper function để convert**:
-```typescript
-function toPascalCaseParams(params: Record<string, any>): Record<string, any> {
-  const result: Record<string, any> = {};
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null) {
-      const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
-      result[pascalKey] = value;
-    }
-  }
-  return result;
-}
-```
-
 **Response Wrapper**: Tất cả responses đều wrap trong `ApiResponse<T>`
 ```typescript
 interface ApiResponse<T> {
@@ -436,31 +422,37 @@ export const useDeleteProduct = () => {
 
 ### 4.8. Component Usage Example
 
-#### Product List Component
+#### Product List Component (URL-state với TanStack Router)
 
 ```typescript
-// shiny-carnival/frontend/src/features/products/components/ProductList.tsx
-import { useState } from 'react';
-import { Table, Button, Space, message, Popconfirm } from 'antd';
+// shiny-carnival/frontend/src/features/products/pages/ProductListPage.tsx
+import { Table, Button, Space, message, Popconfirm, Input } from 'antd';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { useProducts, useDeleteProduct } from '../hooks/useProducts';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
+import { usePaginationWithRouter } from '@/hooks/usePaginationWithRouter';
+import { useDeleteProduct } from '../hooks/useProducts';
+import { productApiService } from '../api/ProductApiService';
 import type { ProductEntity } from '../types/entity';
 
-export const ProductList = () => {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const [search, setSearch] = useState('');
+// Route API để đọc search params từ URL
+const routeApi = getRouteApi('/admin/products');
 
-  // Sử dụng hook để lấy danh sách sản phẩm
-  const { 
-    data: productsData, 
-    isLoading, 
+export const ProductListPage = () => {
+  const navigate = useNavigate();
+  
+  // Sử dụng usePaginationWithRouter để quản lý pagination qua URL
+  const {
+    items,
+    isLoading,
     error,
-    refetch 
-  } = useProducts({ 
-    page, 
-    pageSize, 
-    search 
+    params,
+    totalCount,
+    handlePageChange,
+    handleSearch,
+  } = usePaginationWithRouter<ProductEntity>({
+    apiService: productApiService,
+    entity: 'products',
+    routeApi,
   });
 
   // Hook xóa sản phẩm
@@ -514,7 +506,12 @@ export const ProductList = () => {
           <Button
             type="link"
             icon={<EditOutlined />}
-            onClick={() => {/* Navigate to edit */}}
+            onClick={() => {
+              navigate({
+                to: '/admin/products/$id/edit',
+                params: { id: record.id!.toString() },
+              });
+            }}
           >
             Sửa
           </Button>
@@ -545,21 +542,27 @@ export const ProductList = () => {
 
   return (
     <div>
+      {/* Search Input */}
+      <Input.Search
+        placeholder="Tìm kiếm sản phẩm..."
+        defaultValue={params.search}
+        onSearch={handleSearch}
+        allowClear
+        style={{ marginBottom: 16 }}
+      />
+
       <Table
         columns={columns}
-        dataSource={productsData?.items || []}
+        dataSource={items}
         loading={isLoading}
         rowKey="id"
         pagination={{
-          current: page,
-          pageSize: pageSize,
-          total: productsData?.totalCount || 0,
+          current: params.page,
+          pageSize: params.pageSize,
+          total: totalCount,
           showSizeChanger: true,
           showTotal: (total) => `Tổng ${total} sản phẩm`,
-          onChange: (newPage, newPageSize) => {
-            setPage(newPage);
-            setPageSize(newPageSize);
-          },
+          onChange: handlePageChange,
         }}
       />
     </div>
@@ -773,129 +776,7 @@ export function useApiInfinite<TData = any, TError = Error>({
 
 ### 4.10. Pagination Management Hooks
 
-#### 4.10.1. Basic Pagination Hook
-
-```typescript
-// shiny-carnival/frontend/src/hooks/usePagination.ts
-import { useState, useMemo } from 'react';
-import { useApiPaginated } from './useApi';
-import type { BaseApiService, QueryParams } from '../lib/api/base/BaseApiService';
-import type { PagedRequest } from '../lib/axios';
-
-export interface UsePaginationConfig<TData> {
-  apiService: BaseApiService<TData>;
-  entity: string;
-  initialPage?: number;
-  initialPageSize?: number;
-  initialSearch?: string;
-  initialSortBy?: string;
-  initialSortDesc?: boolean;
-  additionalParams?: QueryParams;
-}
-
-/**
- * Hook quản lý pagination state và actions
- * Tự động sync state và refetch khi params thay đổi
- */
-export function usePagination<TData = any>({
-  apiService,
-  entity,
-  initialPage = 1,
-  initialPageSize = 20,
-  initialSearch = '',
-  initialSortBy = 'id',
-  initialSortDesc = true,
-  additionalParams = {},
-}: UsePaginationConfig<TData>) {
-  // Pagination state
-  const [page, setPage] = useState(initialPage);
-  const [pageSize, setPageSize] = useState(initialPageSize);
-  const [search, setSearch] = useState(initialSearch);
-  const [sortBy, setSortBy] = useState(initialSortBy);
-  const [sortDesc, setSortDesc] = useState(initialSortDesc);
-
-  // Build params object
-  const params: PagedRequest & QueryParams = useMemo(() => ({
-    page,
-    pageSize,
-    search: search || undefined,
-    sortBy,
-    sortDesc,
-    ...additionalParams,
-  }), [page, pageSize, search, sortBy, sortDesc, additionalParams]);
-
-  // Fetch data với pagination
-  const query = useApiPaginated<TData>({
-    apiService,
-    entity,
-    params,
-    options: {
-      staleTime: 1000 * 60 * 5, // 5 phút
-      placeholderData: (previousData) => previousData, // Keep previous data while fetching
-    },
-  });
-
-  // Helper functions
-  const handlePageChange = (newPage: number, newPageSize?: number) => {
-    setPage(newPage);
-    if (newPageSize && newPageSize !== pageSize) {
-      setPageSize(newPageSize);
-      setPage(1); // Reset về trang 1 khi đổi pageSize
-    }
-  };
-
-  const handleSearch = (searchText: string) => {
-    setSearch(searchText);
-    setPage(1); // Reset về trang 1 khi search
-  };
-
-  const handleSort = (field: string, descending: boolean) => {
-    setSortBy(field);
-    setSortDesc(descending);
-    setPage(1); // Reset về trang 1 khi sort
-  };
-
-  const resetPagination = () => {
-    setPage(initialPage);
-    setPageSize(initialPageSize);
-    setSearch(initialSearch);
-    setSortBy(initialSortBy);
-    setSortDesc(initialSortDesc);
-  };
-
-  return {
-    // Query result
-    ...query,
-
-    // Pagination state
-    page,
-    pageSize,
-    search,
-    sortBy,
-    sortDesc,
-
-    // Pagination data
-    totalCount: query.data?.totalCount || 0,
-    totalPages: query.data?.totalPages || 0,
-    hasPrevious: query.data?.hasPrevious || false,
-    hasNext: query.data?.hasNext || false,
-    items: query.data?.items || [],
-
-    // Actions
-    handlePageChange,
-    handleSearch,
-    handleSort,
-    resetPagination,
-    setPage,
-    setPageSize,
-    setSearch,
-    setSortBy,
-    setSortDesc,
-  };
-}
-```
-
-#### 4.10.2. URL-based Pagination Hook
+#### 4.10.1. URL-based Pagination Hook (usePaginationWithRouter)
 
 ```typescript
 // shiny-carnival/frontend/src/hooks/usePaginationWithRouter.ts
@@ -935,15 +816,28 @@ export function usePaginationWithRouter<TData = any>({
   // Lấy search params từ URL
   const search = routeApi.useSearch();
 
-  // Build params từ URL
-  const params: PagedRequest & QueryParams = useMemo(() => ({
-    page: search.page || 1,
-    pageSize: search.pageSize || 20,
-    search: search.search || undefined,
-    sortBy: search.sortBy || 'id',
-    sortDesc: search.sortDesc !== false, // Default true
-    ...additionalParams,
-  }), [search, additionalParams]);
+  // Build params từ URL - Spread tất cả search params để lấy filters đặc biệt
+  const params: PagedRequest & QueryParams = useMemo(() => {
+    // Tách pagination params và filters từ search
+    const {
+      page,
+      pageSize,
+      search: searchText,
+      sortBy,
+      sortDesc,
+      ...filters // Tất cả params còn lại là filters (categoryId, supplierId, minPrice, etc.)
+    } = search;
+
+    return {
+      page: page || 1,
+      pageSize: pageSize || 20,
+      search: searchText || undefined,
+      sortBy: sortBy || 'id',
+      sortDesc: sortDesc !== false, // Default true
+      ...filters, // ✅ Spread filters từ URL (categoryId, supplierId, minPrice, maxPrice, etc.)
+      ...additionalParams, // Static params (override filters nếu cần)
+    };
+  }, [search, additionalParams]);
 
   // Fetch data
   const query = useApiPaginated<TData>({
@@ -956,8 +850,8 @@ export function usePaginationWithRouter<TData = any>({
     },
   });
 
-  // Update URL params
-  const updateUrlParams = (newParams: Partial<PagedRequest>) => {
+  // Update URL params - Generic function để update bất kỳ params nào
+  const updateUrlParams = (newParams: Partial<PagedRequest & QueryParams>) => {
     navigate({
       search: (prev) => ({
         ...prev,
@@ -991,6 +885,40 @@ export function usePaginationWithRouter<TData = any>({
     });
   };
 
+  // ✅ NEW: Handler để update filters đặc biệt
+  const handleFilterChange = (newFilters: QueryParams) => {
+    updateUrlParams({
+      ...newFilters,
+      page: 1, // Reset về page 1 khi filter thay đổi
+    });
+  };
+
+  // ✅ NEW: Clear specific filters
+  const clearFilters = (filterKeys?: string[]) => {
+    if (filterKeys && filterKeys.length > 0) {
+      // Clear specific filters
+      const clearedFilters: Record<string, undefined> = {};
+      filterKeys.forEach(key => {
+        clearedFilters[key] = undefined;
+      });
+      updateUrlParams({
+        ...clearedFilters,
+        page: 1,
+      });
+    } else {
+      // Clear all filters (giữ pagination và sort)
+      const { page, pageSize, search, sortBy, sortDesc, ...filters } = search;
+      const clearedFilters: Record<string, undefined> = {};
+      Object.keys(filters).forEach(key => {
+        clearedFilters[key] = undefined;
+      });
+      updateUrlParams({
+        ...clearedFilters,
+        page: 1,
+      });
+    }
+  };
+
   const resetPagination = () => {
     navigate({
       search: {
@@ -1000,155 +928,33 @@ export function usePaginationWithRouter<TData = any>({
     });
   };
 
+  // ✅ NEW: Extract filters từ params (loại bỏ pagination và sort params)
+  const filters = useMemo(() => {
+    const { page, pageSize, search, sortBy, sortDesc, ...rest } = params;
+    return rest;
+  }, [params]);
+
+  // ✅ NEW: Count active filters
+  const activeFiltersCount = Object.values(filters).filter(
+    v => v !== undefined && v !== null && v !== ''
+  ).length;
+
   return {
     ...query,
     params,
+    filters, // ✅ Expose filters để component có thể sử dụng
     totalCount: query.data?.totalCount || 0,
     totalPages: query.data?.totalPages || 0,
     hasPrevious: query.data?.hasPrevious || false,
     hasNext: query.data?.hasNext || false,
     items: query.data?.items || [],
+    activeFiltersCount, // ✅ Expose count để hiển thị badge
     handlePageChange,
     handleSearch,
     handleSort,
+    handleFilterChange, // ✅ NEW: Handler để update filters
+    clearFilters, // ✅ NEW: Clear filters
     resetPagination,
-  };
-}
-```
-
-#### 4.10.3. Advanced Filters Hook
-
-```typescript
-// shiny-carnival/frontend/src/hooks/usePaginationWithFilters.ts
-import { useState, useMemo } from 'react';
-import { useApiPaginated } from './useApi';
-import type { BaseApiService, QueryParams } from '../lib/api/base/BaseApiService';
-import type { PagedRequest } from '../lib/axios';
-
-export interface UsePaginationWithFiltersConfig<TData, TFilters extends Record<string, any>> {
-  apiService: BaseApiService<TData>;
-  entity: string;
-  initialFilters?: TFilters;
-  initialPage?: number;
-  initialPageSize?: number;
-  initialSortBy?: string;
-  initialSortDesc?: boolean;
-}
-
-/**
- * Hook với advanced filters support
- *
- * @example
- * interface ProductFilters {
- *   categoryId?: number;
- *   minPrice?: number;
- *   maxPrice?: number;
- * }
- *
- * const pagination = usePaginationWithFilters<ProductEntity, ProductFilters>({
- *   apiService: productApiService,
- *   entity: 'products',
- *   initialFilters: {},
- * });
- */
-export function usePaginationWithFilters<TData = any, TFilters extends Record<string, any> = any>({
-  apiService,
-  entity,
-  initialFilters = {} as TFilters,
-  initialPage = 1,
-  initialPageSize = 20,
-  initialSortBy = 'id',
-  initialSortDesc = true,
-}: UsePaginationWithFiltersConfig<TData, TFilters>) {
-  // Pagination state
-  const [page, setPage] = useState(initialPage);
-  const [pageSize, setPageSize] = useState(initialPageSize);
-  const [sortBy, setSortBy] = useState(initialSortBy);
-  const [sortDesc, setSortDesc] = useState(initialSortDesc);
-
-  // Filters state
-  const [filters, setFilters] = useState<TFilters>(initialFilters);
-
-  // Build params
-  const params: PagedRequest & TFilters = useMemo(() => ({
-    page,
-    pageSize,
-    sortBy,
-    sortDesc,
-    ...filters,
-  }), [page, pageSize, sortBy, sortDesc, filters]);
-
-  // Fetch data
-  const query = useApiPaginated<TData>({
-    apiService,
-    entity,
-    params,
-    options: {
-      staleTime: 1000 * 60 * 5,
-      placeholderData: (previousData) => previousData,
-    },
-  });
-
-  // Actions
-  const handlePageChange = (newPage: number, newPageSize?: number) => {
-    setPage(newPage);
-    if (newPageSize && newPageSize !== pageSize) {
-      setPageSize(newPageSize);
-      setPage(1);
-    }
-  };
-
-  const handleSort = (field: string, descending: boolean) => {
-    setSortBy(field);
-    setSortDesc(descending);
-    setPage(1);
-  };
-
-  const handleFilterChange = (newFilters: Partial<TFilters>) => {
-    setFilters((prev) => ({
-      ...prev,
-      ...newFilters,
-    }));
-    setPage(1);
-  };
-
-  const clearFilters = () => {
-    setFilters(initialFilters);
-    setPage(1);
-  };
-
-  const resetAll = () => {
-    setPage(initialPage);
-    setPageSize(initialPageSize);
-    setSortBy(initialSortBy);
-    setSortDesc(initialSortDesc);
-    setFilters(initialFilters);
-  };
-
-  // Count active filters
-  const activeFiltersCount = Object.values(filters).filter(Boolean).length;
-
-  return {
-    ...query,
-    page,
-    pageSize,
-    sortBy,
-    sortDesc,
-    filters,
-    totalCount: query.data?.totalCount || 0,
-    totalPages: query.data?.totalPages || 0,
-    items: query.data?.items || [],
-    activeFiltersCount,
-    handlePageChange,
-    handleSort,
-    handleFilterChange,
-    clearFilters,
-    resetAll,
-    setPage,
-    setPageSize,
-    setSortBy,
-    setSortDesc,
-    setFilters,
   };
 }
 ```
@@ -1194,16 +1000,23 @@ function ProductInfiniteList() {
 }
 ```
 
-**📌 Advanced Usage với Filters:**
+**📌 Advanced Usage với Filters (URL-state):**
 
 ```typescript
-import { useState } from 'react';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { useApiInfinite } from '../../../hooks/useApiInfinite';
 import { productApiService } from '../../../lib/api/productApiService';
 
+// Route API để đọc search params từ URL
+const routeApi = getRouteApi('/admin/products/infinite');
+
 function ProductInfiniteListWithFilters() {
-  const [categoryId, setCategoryId] = useState<number>();
-  const [minPrice, setMinPrice] = useState<number>();
+  const navigate = useNavigate();
+  const search = routeApi.useSearch();
+
+  // Lấy filters từ URL
+  const categoryId = search.categoryId;
+  const minPrice = search.minPrice;
 
   const {
     data,
@@ -1229,11 +1042,35 @@ function ProductInfiniteListWithFilters() {
   const allItems = data?.pages.flatMap(page => page.items) || [];
   const totalCount = data?.pages[0]?.totalCount || 0;
 
+  // Update URL khi filter thay đổi
+  const handleCategoryChange = (value: string) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        categoryId: value ? Number(value) : undefined,
+        page: 1, // Reset về page 1 khi filter thay đổi
+      }),
+    });
+  };
+
+  const handleMinPriceChange = (value: number | null) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        minPrice: value || undefined,
+        page: 1, // Reset về page 1 khi filter thay đổi
+      }),
+    });
+  };
+
   return (
     <div>
       {/* Filters */}
       <div>
-        <select onChange={(e) => setCategoryId(Number(e.target.value))}>
+        <select 
+          value={categoryId?.toString() || ''}
+          onChange={(e) => handleCategoryChange(e.target.value)}
+        >
           <option value="">All Categories</option>
           <option value="1">Category 1</option>
           <option value="2">Category 2</option>
@@ -1242,7 +1079,8 @@ function ProductInfiniteListWithFilters() {
         <input
           type="number"
           placeholder="Min Price"
-          onChange={(e) => setMinPrice(Number(e.target.value))}
+          value={minPrice || ''}
+          onChange={(e) => handleMinPriceChange(Number(e.target.value) || null)}
         />
 
         <button onClick={() => refetch()}>Refresh</button>
@@ -1355,260 +1193,7 @@ useEffect(() => {
 }, [categoryId, minPrice, refetch]);
 ```
 
-#### 4.12.2. usePagination - Basic Pagination Management
-
-**📌 Basic Usage:**
-
-```typescript
-import { usePagination } from '../../../hooks/usePagination';
-import { productApiService } from '../../../lib/api/productApiService';
-
-function ProductTable() {
-  const {
-    items,
-    isLoading,
-    page,
-    pageSize,
-    totalCount,
-    totalPages,
-    handlePageChange,
-  } = usePagination({
-    apiService: productApiService,
-    entity: 'products',
-  });
-
-  return (
-    <div>
-      <table>
-        <tbody>
-          {items.map(product => (
-            <tr key={product.id}>
-              <td>{product.productName}</td>
-              <td>{product.price}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div>
-        <button
-          onClick={() => handlePageChange(page - 1)}
-          disabled={page === 1}
-        >
-          Previous
-        </button>
-
-        <span>Page {page} of {totalPages}</span>
-
-        <button
-          onClick={() => handlePageChange(page + 1)}
-          disabled={page === totalPages}
-        >
-          Next
-        </button>
-      </div>
-    </div>
-  );
-}
-```
-
-**📌 Advanced Usage với Search, Sort, Filters:**
-
-```typescript
-import { useState } from 'react';
-import { usePagination } from '../../../hooks/usePagination';
-import { productApiService } from '../../../lib/api/productApiService';
-
-function ProductTableAdvanced() {
-  const [categoryId, setCategoryId] = useState<number>();
-
-  const {
-    items,
-    isLoading,
-    isFetching,
-    page,
-    pageSize,
-    totalCount,
-    search,
-    sortBy,
-    sortDesc,
-    handlePageChange,
-    handleSearch,
-    handleSort,
-    resetPagination,
-    setPageSize,
-  } = usePagination({
-    apiService: productApiService,
-    entity: 'products',
-    initialPage: 1,
-    initialPageSize: 20,
-    initialSortBy: 'createdAt',
-    initialSortDesc: true,
-    additionalParams: {
-      categoryId, // Dynamic filter
-    },
-  });
-
-  return (
-    <div>
-      {/* Search */}
-      <input
-        type="text"
-        placeholder="Search..."
-        defaultValue={search}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            handleSearch(e.currentTarget.value);
-          }
-        }}
-      />
-
-      {/* Filters */}
-      <select onChange={(e) => setCategoryId(Number(e.target.value))}>
-        <option value="">All Categories</option>
-        <option value="1">Category 1</option>
-      </select>
-
-      {/* Page Size */}
-      <select
-        value={pageSize}
-        onChange={(e) => setPageSize(Number(e.target.value))}
-      >
-        <option value="10">10 per page</option>
-        <option value="20">20 per page</option>
-        <option value="50">50 per page</option>
-      </select>
-
-      <button onClick={resetPagination}>Reset All</button>
-
-      {/* Table */}
-      <table>
-        <thead>
-          <tr>
-            <th onClick={() => handleSort('productName', !sortDesc)}>
-              Name {sortBy === 'productName' && (sortDesc ? '↓' : '↑')}
-            </th>
-            <th onClick={() => handleSort('price', !sortDesc)}>
-              Price {sortBy === 'price' && (sortDesc ? '↓' : '↑')}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map(product => (
-            <tr key={product.id}>
-              <td>{product.productName}</td>
-              <td>{product.price}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* Loading indicator */}
-      {isFetching && <div>Loading...</div>}
-
-      {/* Pagination */}
-      <div>
-        <span>Total: {totalCount} items</span>
-        <button onClick={() => handlePageChange(page - 1)} disabled={page === 1}>
-          Previous
-        </button>
-        <span>Page {page}</span>
-        <button onClick={() => handlePageChange(page + 1)}>
-          Next
-        </button>
-      </div>
-    </div>
-  );
-}
-```
-
-**📌 Config Options:**
-
-```typescript
-interface UsePaginationConfig<TData> {
-  // Required
-  apiService: BaseApiService<TData>;
-  entity: string;
-
-  // Optional
-  initialPage?: number;           // Default: 1
-  initialPageSize?: number;       // Default: 20
-  initialSearch?: string;         // Default: ''
-  initialSortBy?: string;         // Default: 'id'
-  initialSortDesc?: boolean;      // Default: true
-  additionalParams?: QueryParams; // Extra params (filters, etc.)
-}
-```
-
-**📌 Return Values:**
-
-```typescript
-{
-  // Query result
-  data: PagedList<TData> | undefined;
-  isLoading: boolean;
-  isFetching: boolean;
-  isError: boolean;
-  error: Error | null;
-  refetch: () => void;
-
-  // Pagination state
-  page: number;
-  pageSize: number;
-  search: string;
-  sortBy: string;
-  sortDesc: boolean;
-
-  // Pagination data
-  totalCount: number;
-  totalPages: number;
-  hasPrevious: boolean;
-  hasNext: boolean;
-  items: TData[];
-
-  // Actions
-  handlePageChange: (newPage: number, newPageSize?: number) => void;
-  handleSearch: (searchText: string) => void;
-  handleSort: (field: string, descending: boolean) => void;
-  resetPagination: () => void;
-
-  // Setters
-  setPage: (page: number) => void;
-  setPageSize: (size: number) => void;
-  setSearch: (search: string) => void;
-  setSortBy: (field: string) => void;
-  setSortDesc: (desc: boolean) => void;
-}
-```
-
-**💡 Common Patterns:**
-
-```typescript
-// 1. Debounced search
-const [searchInput, setSearchInput] = useState('');
-
-useEffect(() => {
-  const timer = setTimeout(() => {
-    handleSearch(searchInput);
-  }, 500);
-  return () => clearTimeout(timer);
-}, [searchInput]);
-
-// 2. Reset về page 1 khi filter change
-useEffect(() => {
-  setPage(1);
-}, [categoryId, minPrice]);
-
-// 3. Persist pageSize trong localStorage
-useEffect(() => {
-  localStorage.setItem('products-pageSize', pageSize.toString());
-}, [pageSize]);
-
-// 4. Show loading overlay
-{isFetching && !isLoading && <LoadingOverlay />}
-```
-
-#### 4.12.3. usePaginationWithRouter - URL-based Pagination
+#### 4.12.2. usePaginationWithRouter - URL-based Pagination (Page Components)
 
 **📌 Basic Usage:**
 
@@ -1798,34 +1383,24 @@ navigate({
 // TanStack Router tự động preserve search params
 ```
 
-#### 4.12.4. usePaginationWithFilters - Advanced Filters
+#### 4.12.4. usePaginationWithRouter với Filters - Page Components (URL-state)
 
-**📌 Basic Usage:**
+**📌 Basic Usage với Filters:**
 
 ```typescript
-import { usePaginationWithFilters } from '../../../hooks/usePaginationWithFilters';
+import { getRouteApi } from '@tanstack/react-router';
+import { usePaginationWithRouter } from '../../../hooks/usePaginationWithRouter';
 import { productApiService } from '../../../lib/api/productApiService';
 
-interface ProductFilters {
-  categoryId?: number;
-  minPrice?: number;
-  maxPrice?: number;
-}
+// Route API để đọc search params từ URL
+const routeApi = getRouteApi('/admin/products');
 
 function ProductTableWithFilters() {
-  const {
-    items,
-    page,
-    pageSize,
-    filters,
-    activeFiltersCount,
-    handlePageChange,
-    handleFilterChange,
-    clearFilters,
-  } = usePaginationWithFilters<ProductEntity, ProductFilters>({
+  // ✅ Dùng usePaginationWithRouter - tự động handle filters từ URL
+  const pagination = usePaginationWithRouter<ProductEntity>({
     apiService: productApiService,
     entity: 'products',
-    initialFilters: {},
+    routeApi,
   });
 
   return (
@@ -1833,8 +1408,8 @@ function ProductTableWithFilters() {
       {/* Filters */}
       <div>
         <select
-          value={filters.categoryId || ''}
-          onChange={(e) => handleFilterChange({
+          value={pagination.filters.categoryId?.toString() || ''}
+          onChange={(e) => pagination.handleFilterChange({
             categoryId: e.target.value ? Number(e.target.value) : undefined
           })}
         >
@@ -1846,8 +1421,8 @@ function ProductTableWithFilters() {
         <input
           type="number"
           placeholder="Min Price"
-          value={filters.minPrice || ''}
-          onChange={(e) => handleFilterChange({
+          value={pagination.filters.minPrice || ''}
+          onChange={(e) => pagination.handleFilterChange({
             minPrice: e.target.value ? Number(e.target.value) : undefined
           })}
         />
@@ -1855,15 +1430,15 @@ function ProductTableWithFilters() {
         <input
           type="number"
           placeholder="Max Price"
-          value={filters.maxPrice || ''}
-          onChange={(e) => handleFilterChange({
+          value={pagination.filters.maxPrice || ''}
+          onChange={(e) => pagination.handleFilterChange({
             maxPrice: e.target.value ? Number(e.target.value) : undefined
           })}
         />
 
-        {activeFiltersCount > 0 && (
-          <button onClick={clearFilters}>
-            Clear Filters ({activeFiltersCount})
+        {pagination.activeFiltersCount > 0 && (
+          <button onClick={() => pagination.clearFilters()}>
+            Clear Filters ({pagination.activeFiltersCount})
           </button>
         )}
       </div>
@@ -1871,7 +1446,7 @@ function ProductTableWithFilters() {
       {/* Table */}
       <table>
         <tbody>
-          {items.map(product => (
+          {pagination.items.map(product => (
             <tr key={product.id}>
               <td>{product.productName}</td>
               <td>{product.price}</td>
@@ -1881,21 +1456,32 @@ function ProductTableWithFilters() {
       </table>
 
       {/* Pagination */}
-      <button onClick={() => handlePageChange(page - 1)}>Previous</button>
-      <span>Page {page}</span>
-      <button onClick={() => handlePageChange(page + 1)}>Next</button>
+      <div>
+        <span>Total: {pagination.totalCount} items</span>
+        <button 
+          onClick={() => pagination.handlePageChange(pagination.params.page - 1)} 
+          disabled={pagination.params.page === 1}
+        >
+          Previous
+        </button>
+        <span>Page {pagination.params.page} of {pagination.totalPages}</span>
+        <button onClick={() => pagination.handlePageChange(pagination.params.page + 1)}>
+          Next
+        </button>
+      </div>
     </div>
   );
 }
 ```
 
-**📌 Advanced Usage với Filter Drawer:**
+**📌 Advanced Usage với Filter Drawer (Page Component):**
 
 ```typescript
 import { useState } from 'react';
 import { Drawer, Button, Badge, Space, InputNumber, Select } from 'antd';
 import { FilterOutlined } from '@ant-design/icons';
-import { usePaginationWithFilters } from '../../../hooks/usePaginationWithFilters';
+import { getRouteApi } from '@tanstack/react-router';
+import { usePaginationWithRouter } from '../../../hooks/usePaginationWithRouter';
 
 interface ProductFilters {
   categoryId?: number;
@@ -1906,45 +1492,41 @@ interface ProductFilters {
   inStock?: boolean;
 }
 
+// Route API để đọc search params từ URL
+const routeApi = getRouteApi('/admin/products');
+
 function ProductTableWithFilterDrawer() {
+  // ✅ Dùng usePaginationWithRouter cho Page components
+  const pagination = usePaginationWithRouter<ProductEntity>({
+    apiService: productApiService,
+    entity: 'products',
+    routeApi,
+  });
+
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [tempFilters, setTempFilters] = useState<Partial<ProductFilters>>({});
 
-  const {
-    items,
-    isLoading,
-    filters,
-    activeFiltersCount,
-    handleFilterChange,
-    clearFilters,
-    resetAll,
-  } = usePaginationWithFilters<ProductEntity, ProductFilters>({
-    apiService: productApiService,
-    entity: 'products',
-    initialFilters: {
-      inStock: true, // Default filter
-    },
-  });
-
+  // Update URL khi apply filters
   const applyFilters = () => {
-    handleFilterChange(tempFilters);
+    pagination.handleFilterChange(tempFilters);
     setDrawerVisible(false);
   };
 
+  // Clear filters và update URL
   const handleResetFilters = () => {
     setTempFilters({});
-    clearFilters();
+    pagination.clearFilters(); // ✅ Dùng method từ hook
     setDrawerVisible(false);
   };
 
   return (
     <div>
       {/* Filter Button */}
-      <Badge count={activeFiltersCount} offset={[-5, 5]}>
+      <Badge count={pagination.activeFiltersCount} offset={[-5, 5]}>
         <Button
           icon={<FilterOutlined />}
           onClick={() => {
-            setTempFilters(filters);
+            setTempFilters(pagination.filters); // ✅ Lấy filters từ hook
             setDrawerVisible(true);
           }}
         >
@@ -1953,19 +1535,19 @@ function ProductTableWithFilterDrawer() {
       </Badge>
 
       {/* Active Filters Display */}
-      {activeFiltersCount > 0 && (
+      {pagination.activeFiltersCount > 0 && (
         <Space>
-          {filters.categoryId && <span>Category: {filters.categoryId}</span>}
-          {filters.minPrice && <span>Min: ${filters.minPrice}</span>}
-          {filters.maxPrice && <span>Max: ${filters.maxPrice}</span>}
-          <Button size="small" onClick={clearFilters}>Clear All</Button>
+          {pagination.filters.categoryId && <span>Category: {pagination.filters.categoryId}</span>}
+          {pagination.filters.minPrice && <span>Min: ${pagination.filters.minPrice}</span>}
+          {pagination.filters.maxPrice && <span>Max: ${pagination.filters.maxPrice}</span>}
+          <Button size="small" onClick={handleResetFilters}>Clear All</Button>
         </Space>
       )}
 
       {/* Table */}
       <table>
         <tbody>
-          {items.map(product => (
+          {pagination.items.map(product => (
             <tr key={product.id}>
               <td>{product.productName}</td>
               <td>{product.price}</td>
@@ -2039,40 +1621,67 @@ function ProductTableWithFilterDrawer() {
 }
 ```
 
-**📌 Config Options:**
+**📌 Khi nào dùng `usePaginationWithRouter` vs `usePaginationLocal`:**
+
+| Use Case | Hook | Lý do |
+|----------|------|-------|
+| **Page components** với filters | `usePaginationWithRouter` ✅ | Có router context, cần URL sync, shareable links |
+| **Modal/Drawer** với filters | `usePaginationLocal` ✅ | Không có router context, cần local state |
+| **Nested components** (nhận filters từ props) | `useApiPaginated` ✅ | Nhận params từ parent, không quản lý state |
+
+**⚠️ Lưu ý quan trọng:**
+
+- `usePaginationWithRouter` đã hỗ trợ đầy đủ filters, dùng cho **Page components**
+- `usePaginationLocal` đã hỗ trợ đầy đủ filters, dùng cho **Modal/Drawer** (không có router context)
+- Không cần dùng cả 2 hooks cùng lúc trong Page components
+
+**📌 Config Options cho `usePaginationWithRouter`:**
 
 ```typescript
-interface UsePaginationWithFiltersConfig<TData, TFilters> {
+interface UsePaginationWithRouterConfig<TData> {
   apiService: BaseApiService<TData>;
   entity: string;
-  initialFilters?: TFilters;      // Default filters
-  initialPage?: number;
-  initialPageSize?: number;
-  initialSortBy?: string;
-  initialSortDesc?: boolean;
+  routeApi: any; // TanStack Router route API
+  additionalParams?: QueryParams; // Static params (optional)
 }
 ```
 
-**📌 Return Values:**
+**📌 Return Values từ `usePaginationWithRouter`:**
 
 ```typescript
 {
-  // Same as usePagination, plus:
-  filters: TFilters;              // Current filters
-  activeFiltersCount: number;     // Count of active filters
+  // Query result
+  data: PagedList<TData> | undefined;
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  error: Error | null;
+  refetch: () => void;
 
-  // Filter actions
-  handleFilterChange: (newFilters: Partial<TFilters>) => void;
-  clearFilters: () => void;
-  resetAll: () => void;           // Reset pagination + filters
-  setFilters: (filters: TFilters) => void;
+  // Pagination data
+  params: PagedRequest & QueryParams; // All params (pagination + filters)
+  filters: QueryParams; // ✅ Extracted filters (loại bỏ pagination/sort)
+  totalCount: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  items: TData[];
+  activeFiltersCount: number; // ✅ Count active filters
+
+  // Actions
+  handlePageChange: (newPage: number, newPageSize?: number) => void;
+  handleSearch: (searchText: string) => void;
+  handleSort: (field: string, descending: boolean) => void;
+  handleFilterChange: (newFilters: QueryParams) => void; // ✅ Update filters
+  clearFilters: (filterKeys?: string[]) => void; // ✅ Clear filters
+  resetPagination: () => void;
 }
 ```
 
 **💡 Common Patterns:**
 
 ```typescript
-// 1. Filter presets
+// 1. Filter presets với usePaginationWithRouter
 const filterPresets = {
   inStock: { inStock: true, minPrice: 0 },
   expensive: { minPrice: 1000 },
@@ -2080,25 +1689,25 @@ const filterPresets = {
 };
 
 const applyPreset = (preset: keyof typeof filterPresets) => {
-  handleFilterChange(filterPresets[preset]);
+  pagination.handleFilterChange(filterPresets[preset]);
 };
 
-// 2. URL sync với filters (combine với usePaginationWithRouter)
-const searchParams = new URLSearchParams();
-Object.entries(filters).forEach(([key, value]) => {
-  if (value !== undefined) {
-    searchParams.set(key, String(value));
-  }
-});
+// 2. URL tự động sync - không cần manual sync
+// URL: /admin/products?page=2&categoryId=5&minPrice=100
+// → pagination.filters = { categoryId: 5, minPrice: 100 }
+// → pagination.params = { page: 2, pageSize: 20, categoryId: 5, minPrice: 100, ... }
 
-// 3. Save filter preferences
-useEffect(() => {
-  localStorage.setItem('product-filters', JSON.stringify(filters));
-}, [filters]);
+// 3. Clear specific filters
+pagination.clearFilters(['minPrice', 'maxPrice']);
+// → Chỉ xóa minPrice và maxPrice, giữ lại các filters khác
 
-// 4. Complex filter logic
+// 4. Clear all filters
+pagination.clearFilters();
+// → Xóa tất cả filters, giữ lại pagination và sort
+
+// 5. Complex filter logic
 const handlePriceRangeChange = (min?: number, max?: number) => {
-  handleFilterChange({
+  pagination.handleFilterChange({
     minPrice: min,
     maxPrice: max,
   });
@@ -3103,302 +2712,7 @@ queryClient.invalidateQueries({ queryKey: ['products'] });
 // → All infinite queries invalidated
 ```
 
-#### 4.13.4. usePagination - State Management Hook
-
-**📥 INPUT PARAMETERS:**
-
-```typescript
-interface UsePaginationConfig<TData> {
-  // REQUIRED
-  apiService: BaseApiService<TData>;
-  entity: string;
-
-  // OPTIONAL - Initial State
-  initialPage?: number;
-  // - Default: 1
-  // - Mô tả: Starting page number
-
-  initialPageSize?: number;
-  // - Default: 20
-  // - Mô tả: Starting page size
-
-  initialSearch?: string;
-  // - Default: ''
-  // - Mô tả: Initial search text
-
-  initialSortBy?: string;
-  // - Default: 'id'
-  // - Mô tả: Initial sort field
-
-  initialSortDesc?: boolean;
-  // - Default: true
-  // - Mô tả: Initial sort direction
-
-  additionalParams?: QueryParams;
-  // - Default: {}
-  // - Mô tả: Extra params (filters, etc.)
-  // - Example: { categoryId: 5, inStock: true }
-}
-```
-
-**📤 OUTPUT/RETURN VALUES:**
-
-```typescript
-{
-  // QUERY RESULT (từ useApiPaginated)
-  data: PagedList<TData> | undefined;
-  isLoading: boolean;
-  isFetching: boolean;
-  isError: boolean;
-  error: Error | null;
-  refetch: () => void;
-
-  // PAGINATION STATE
-  page: number;              // Current page
-  pageSize: number;          // Items per page
-  search: string;            // Search text
-  sortBy: string;            // Sort field
-  sortDesc: boolean;         // Sort direction
-
-  // PAGINATION DATA (từ data)
-  totalCount: number;        // Total items
-  totalPages: number;        // Total pages
-  hasPrevious: boolean;      // Has previous page
-  hasNext: boolean;          // Has next page
-  items: TData[];            // Items in current page
-
-  // ACTIONS
-  handlePageChange: (newPage: number, newPageSize?: number) => void;
-  // - Mô tả: Change page/pageSize
-  // - Logic:
-  //   * Set page = newPage
-  //   * If newPageSize changed: set pageSize, reset page to 1
-
-  handleSearch: (searchText: string) => void;
-  // - Mô tả: Update search
-  // - Logic: Set search, reset page to 1
-
-  handleSort: (field: string, descending: boolean) => void;
-  // - Mô tả: Update sort
-  // - Logic: Set sortBy, sortDesc, reset page to 1
-
-  resetPagination: () => void;
-  // - Mô tả: Reset all to initial values
-
-  // SETTERS (direct state update)
-  setPage: (page: number) => void;
-  setPageSize: (size: number) => void;
-  setSearch: (search: string) => void;
-  setSortBy: (field: string) => void;
-  setSortDesc: (desc: boolean) => void;
-}
-```
-
-**🔄 LUỒNG HOẠT ĐỘNG:**
-
-```
-1. Component mount
-   ↓
-2. usePagination khởi tạo state
-   - page = initialPage (1)
-   - pageSize = initialPageSize (20)
-   - search = initialSearch ('')
-   - sortBy = initialSortBy ('id')
-   - sortDesc = initialSortDesc (true)
-   ↓
-3. Build params object từ state
-   params = {
-     page: 1,
-     pageSize: 20,
-     search: '',
-     sortBy: 'id',
-     sortDesc: true,
-     ...additionalParams
-   }
-   ↓
-4. Call useApiPaginated với params
-   ↓
-5. Fetch data từ API
-   ↓
-6. Component renders với data
-   ↓
-7. User interaction:
-
-   A. User clicks page 2
-      ↓
-      handlePageChange(2)
-      ↓
-      setPage(2)
-      ↓
-      params thay đổi: { page: 2, ... }
-      ↓
-      useApiPaginated refetch với params mới
-      ↓
-      Component re-render với page 2 data
-
-   B. User searches "laptop"
-      ↓
-      handleSearch('laptop')
-      ↓
-      setSearch('laptop')
-      setPage(1)  // Reset về page 1
-      ↓
-      params thay đổi: { page: 1, search: 'laptop', ... }
-      ↓
-      useApiPaginated refetch
-      ↓
-      Component re-render với search results
-
-   C. User sorts by price
-      ↓
-      handleSort('price', false)
-      ↓
-      setSortBy('price')
-      setSortDesc(false)
-      setPage(1)  // Reset về page 1
-      ↓
-      params thay đổi: { page: 1, sortBy: 'price', sortDesc: false, ... }
-      ↓
-      useApiPaginated refetch
-      ↓
-      Component re-render với sorted data
-
-   D. User changes pageSize to 50
-      ↓
-      handlePageChange(1, 50)
-      ↓
-      setPageSize(50)
-      setPage(1)  // Reset về page 1
-      ↓
-      params thay đổi: { page: 1, pageSize: 50, ... }
-      ↓
-      useApiPaginated refetch
-      ↓
-      Component re-render với 50 items
-```
-
-**📊 STATE FLOW DIAGRAM:**
-
-```mermaid
-stateDiagram-v2
-    [*] --> InitialState: Component Mount
-
-    InitialState: page=1, pageSize=20, search='', sortBy='id'
-
-    InitialState --> FetchData: Build params
-    FetchData --> ShowData: API Response
-
-    ShowData --> PageChange: User clicks page 2
-    PageChange --> FetchData: page=2
-
-    ShowData --> Search: User searches
-    Search --> ResetPage: page=1
-    ResetPage --> FetchData: search='laptop'
-
-    ShowData --> Sort: User sorts
-    Sort --> ResetPage: page=1
-    ResetPage --> FetchData: sortBy='price'
-
-    ShowData --> PageSizeChange: User changes pageSize
-    PageSizeChange --> ResetPage: page=1
-    ResetPage --> FetchData: pageSize=50
-```
-
-**⚙️ INTERNAL MECHANISM:**
-
-```typescript
-export function usePagination<TData>({ apiService, entity, initialPage = 1, ... }) {
-  // 1. State management
-  const [page, setPage] = useState(initialPage);
-  const [pageSize, setPageSize] = useState(initialPageSize);
-  const [search, setSearch] = useState(initialSearch);
-  const [sortBy, setSortBy] = useState(initialSortBy);
-  const [sortDesc, setSortDesc] = useState(initialSortDesc);
-
-  // 2. Build params (useMemo để tránh re-create)
-  const params = useMemo(() => ({
-    page,
-    pageSize,
-    search: search || undefined,
-    sortBy,
-    sortDesc,
-    ...additionalParams,
-  }), [page, pageSize, search, sortBy, sortDesc, additionalParams]);
-
-  // 3. Fetch data
-  const query = useApiPaginated<TData>({
-    apiService,
-    entity,
-    params,
-    options: {
-      staleTime: 1000 * 60 * 5,
-      placeholderData: (previousData) => previousData,
-    },
-  });
-
-  // 4. Helper functions
-  const handlePageChange = (newPage: number, newPageSize?: number) => {
-    setPage(newPage);
-    if (newPageSize && newPageSize !== pageSize) {
-      setPageSize(newPageSize);
-      setPage(1); // Reset về page 1 khi đổi pageSize
-    }
-  };
-
-  const handleSearch = (searchText: string) => {
-    setSearch(searchText);
-    setPage(1); // Reset về page 1 khi search
-  };
-
-  const handleSort = (field: string, descending: boolean) => {
-    setSortBy(field);
-    setSortDesc(descending);
-    setPage(1); // Reset về page 1 khi sort
-  };
-
-  // 5. Return combined state + query result
-  return {
-    ...query,
-    page,
-    pageSize,
-    search,
-    sortBy,
-    sortDesc,
-    totalCount: query.data?.totalCount || 0,
-    totalPages: query.data?.totalPages || 0,
-    items: query.data?.items || [],
-    handlePageChange,
-    handleSearch,
-    handleSort,
-    // ...
-  };
-}
-```
-
-**🎯 KEY BEHAVIORS:**
-
-```typescript
-// 1. Auto-reset page to 1 khi:
-// - Search changes
-// - Sort changes
-// - PageSize changes
-// - Filters change
-// → Tránh trường hợp page 5 nhưng chỉ có 2 pages sau filter
-
-// 2. Keep previous data while fetching
-// placeholderData: (previousData) => previousData
-// → Smooth transition, không blink
-
-// 3. Memoized params
-// useMemo → Chỉ re-create khi dependencies thay đổi
-// → Tránh unnecessary refetch
-
-// 4. Separate setters vs handlers
-// setPage(2) → Chỉ set page
-// handlePageChange(2) → Set page + logic (reset nếu cần)
-```
-
-#### 4.13.5. usePaginationWithRouter - URL Sync Hook
+#### 4.13.4. usePaginationWithRouter - URL Sync Hook (Page Components)
 
 **📥 INPUT PARAMETERS:**
 
@@ -5166,9 +4480,9 @@ const publishProduct = useApiCustomMutation({
 ┌─────────────────────────┬──────────────────────────────────────────┐
 │ Hook                    │ Purpose                                  │
 ├─────────────────────────┼──────────────────────────────────────────┤
-│ usePagination           │ State management cho pagination          │
+│ useApiPaginated         │ Core hook (data fetching only)           │
 │ usePaginationWithRouter │ URL-synced pagination                    │
-│ usePaginationWithFilters│ Advanced filters management              │
+│ usePaginationLocal      │ Local state pagination với filters      │
 │ usePaginationWithPrefetch│ Prefetching support                     │
 └─────────────────────────┴──────────────────────────────────────────┘
 ```
@@ -5779,9 +5093,8 @@ export function useProductsWithPersistence() {
 #### Universal Hooks
 - [ ] Tạo `src/hooks/useApi.ts` - Basic CRUD hooks
 - [ ] Tạo `src/hooks/useApiInfinite.ts` - Infinite scroll hook
-- [ ] Tạo `src/hooks/usePagination.ts` - Pagination management
-- [ ] Tạo `src/hooks/usePaginationWithRouter.ts` - URL-based pagination
-- [ ] Tạo `src/hooks/usePaginationWithFilters.ts` - Advanced filters
+- [ ] Tạo `src/hooks/usePaginationWithRouter.ts` - URL-based pagination management
+- [ ] Tạo `src/hooks/usePaginationLocal.ts` - Local state pagination với filters
 - [ ] Tạo `src/hooks/usePaginationWithPrefetch.ts` - Prefetching support
 
 #### Entity Implementation
@@ -5837,11 +5150,10 @@ export function useProductsWithPersistence() {
 ### 🎯 Key Features Summary:
 
 #### Pagination Support
-- ✅ Server-side pagination với `useApiPaginated`
+- ✅ Server-side pagination với `useApiPaginated` (core hook, data fetching only)
+- ✅ URL-based pagination với `usePaginationWithRouter` (Page components, URL sync)
+- ✅ Local state pagination với `usePaginationLocal` (Modal/Drawer components với filters)
 - ✅ Infinite scroll với `useApiInfinite`
-- ✅ URL-based pagination với `usePaginationWithRouter`
-- ✅ Advanced filters với `usePaginationWithFilters`
-- ✅ Prefetching với `usePaginationWithPrefetch`
 - ✅ Debounced search
 - ✅ Sorting support
 - ✅ Persistent state (localStorage)

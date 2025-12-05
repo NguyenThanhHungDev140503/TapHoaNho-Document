@@ -2418,6 +2418,7 @@ async getPaginated(params?: PagedRequest): Promise<PagedList<TData>> {
 ```typescript
 import { useQuery } from '@tanstack/react-query';
 import type { PagedList, PagedRequest } from '../../../lib/axios';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
 
 export function useApiPaginated<TData = any>({
   apiService,
@@ -2441,40 +2442,947 @@ export function useApiPaginated<TData = any>({
 }
 ```
 
-**Ví dụ sử dụng**:
+**Ví dụ sử dụng (khuyến nghị với TanStack Router – state qua URL)**:
 
 ```typescript
-// Trong component
+// routes/admin/products.tsx (route API)
+const routeApi = getRouteApi('/admin/products');
+
+// Component
 function ProductListPage() {
-  const [pagination, setPagination] = useState<PagedRequest>({
-    page: 1,
-    pageSize: 20,
-    search: '',
-    sortBy: 'ProductName',
-    sortDesc: false,
-  });
+  const navigate = useNavigate();
+  const search = routeApi.useSearch();
+  const params: PagedRequest = {
+    page: search.page ?? 1,
+    pageSize: search.pageSize ?? 20,
+    search: search.search,
+    sortBy: search.sortBy ?? 'ProductName',
+    sortDesc: search.sortDesc ?? false,
+  };
 
   const { data, isLoading } = useApiPaginated<ProductEntity>({
     apiService: productApiService,
     entity: 'products',
-    params: pagination,
+    params,
+    options: {
+      keepPreviousData: true,
+      staleTime: 1000 * 60 * 5,
+    },
   });
+
+  const handlePageChange = (page: number, pageSize?: number) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        page,
+        pageSize: pageSize ?? prev.pageSize ?? 20,
+      }),
+    });
+  };
+
+  const handleSearch = (value: string) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        page: 1,
+        search: value || undefined,
+      }),
+    });
+  };
 
   return (
     <div>
+      <Input.Search
+        defaultValue={params.search}
+        onSearch={handleSearch}
+        allowClear
+      />
       <Table
         dataSource={data?.items || []}
+        loading={isLoading}
         pagination={{
-          current: data?.page || 1,
-          pageSize: data?.pageSize || 20,
+          current: data?.page || params.page,
+          pageSize: data?.pageSize || params.pageSize,
           total: data?.totalCount || 0,
-          onChange: (page, pageSize) => {
-            setPagination(prev => ({ ...prev, page, pageSize }));
-          },
+          onChange: handlePageChange,
+          showSizeChanger: true,
         }}
       />
     </div>
   );
+}
+```
+
+### 5.3. Pagination Management Hooks
+
+Hệ thống cung cấp 3 hooks cho pagination, mỗi hook phù hợp với use case khác nhau:
+
+#### 5.3.1. `useApiPaginated` - Core Hook (Data Fetching Only)
+
+Hook cơ bản nhất, chỉ lo việc fetch data. Không quản lý state, nhận `params` từ bên ngoài.
+
+**Khi nào dùng:**
+- ✅ Nested components nhận params từ props
+- ✅ Custom pagination logic phức tạp
+- ✅ Cần full control over state management
+- ✅ Dùng với bất kỳ state management nào (URL, useState, Zustand, Redux)
+
+**Ví dụ sử dụng:**
+
+```typescript
+// Pattern 1: Với TanStack Router (URL state)
+function ProductListPage() {
+  const routeApi = getRouteApi('/admin/products');
+  const navigate = useNavigate();
+  const search = routeApi.useSearch();
+  
+  const params: PagedRequest = {
+    page: search.page ?? 1,
+    pageSize: search.pageSize ?? 20,
+    search: search.search,
+    sortBy: search.sortBy ?? 'ProductName',
+    sortDesc: search.sortDesc ?? false,
+  };
+
+  const { data, isLoading } = useApiPaginated<ProductEntity>({
+    apiService: productApiService,
+    entity: 'products',
+    params,
+    options: {
+      keepPreviousData: true,
+      staleTime: 1000 * 60 * 5,
+    },
+  });
+
+  const handlePageChange = (page: number, pageSize?: number) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        page,
+        pageSize: pageSize ?? prev.pageSize ?? 20,
+      }),
+    });
+  };
+
+  return (
+    <Table
+      dataSource={data?.items || []}
+      pagination={{
+        current: data?.page,
+        pageSize: data?.pageSize,
+        total: data?.totalCount || 0,
+        onChange: handlePageChange,
+      }}
+    />
+  );
+}
+
+// Pattern 2: Nested component nhận params từ props
+function ProductTable({ params, onPageChange }: { params: PagedRequest; onPageChange: (page: number) => void }) {
+  const { data, isLoading } = useApiPaginated<ProductEntity>({
+    apiService: productApiService,
+    entity: 'products',
+    params, // Nhận từ parent
+  });
+
+  return (
+    <Table
+      dataSource={data?.items || []}
+      pagination={{
+        current: data?.page,
+        total: data?.totalCount || 0,
+        onChange: onPageChange,
+      }}
+    />
+  );
+}
+```
+
+#### 5.3.2. `usePaginationWithRouter` - Page Components (URL State)
+
+Hook wrapper cho Page components, tự động sync với URL. Quản lý state qua TanStack Router.
+
+**Khi nào dùng:**
+- ✅ Page components có router context
+- ✅ Cần URL sync (deep linking, shareable URLs, browser back/forward)
+- ✅ SEO friendly pagination
+- ❌ KHÔNG dùng trong Modal/Drawer (không có router context)
+
+**Định nghĩa:**
+
+```typescript
+// src/hooks/usePaginationWithRouter.ts
+import { useNavigate } from '@tanstack/react-router';
+import { useMemo } from 'react';
+import { useApiPaginated } from './useApi';
+import type { BaseApiService, QueryParams } from '../lib/api/base/BaseApiService';
+import type { PagedRequest } from '../lib/axios';
+
+export interface UsePaginationWithRouterConfig<TData> {
+  apiService: BaseApiService<TData>;
+  entity: string;
+  routeApi: any; // TanStack Router route API
+  additionalParams?: QueryParams;
+}
+
+/**
+ * Hook quản lý pagination với URL sync
+ * Pagination state được lưu trong URL query params
+ * 
+ * @example
+ * const routeApi = getRouteApi('/admin/products');
+ * const pagination = usePaginationWithRouter({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   routeApi,
+ * });
+ */
+export function usePaginationWithRouter<TData = any>({
+  apiService,
+  entity,
+  routeApi,
+  additionalParams = {},
+}: UsePaginationWithRouterConfig<TData>) {
+  const navigate = useNavigate();
+
+  // Lấy search params từ URL
+  const search = routeApi.useSearch();
+
+  // Build params từ URL - Spread tất cả search params để lấy filters đặc biệt
+  const params: PagedRequest & QueryParams = useMemo(() => {
+    // Tách pagination params và filters từ search
+    const {
+      page,
+      pageSize,
+      search: searchText,
+      sortBy,
+      sortDesc,
+      ...filters // Tất cả params còn lại là filters (categoryId, supplierId, minPrice, etc.)
+    } = search;
+
+    return {
+      page: page || 1,
+      pageSize: pageSize || 20,
+      search: searchText || undefined,
+      sortBy: sortBy || 'id',
+      sortDesc: sortDesc !== false, // Default true
+      ...filters, // ✅ Spread filters từ URL (categoryId, supplierId, minPrice, maxPrice, etc.)
+      ...additionalParams, // Static params (override filters nếu cần)
+    };
+  }, [search, additionalParams]);
+
+  // Fetch data
+  const query = useApiPaginated<TData>({
+    apiService,
+    entity,
+    params,
+    options: {
+      staleTime: 1000 * 60 * 5,
+      placeholderData: (previousData) => previousData,
+    },
+  });
+
+  // Update URL params - Generic function để update bất kỳ params nào
+  const updateUrlParams = (newParams: Partial<PagedRequest & QueryParams>) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        ...newParams,
+      }),
+    });
+  };
+
+  // Helper functions
+  const handlePageChange = (newPage: number, newPageSize?: number) => {
+    const updates: Partial<PagedRequest> = { page: newPage };
+    if (newPageSize && newPageSize !== params.pageSize) {
+      updates.pageSize = newPageSize;
+      updates.page = 1;
+    }
+    updateUrlParams(updates);
+  };
+
+  const handleSearch = (searchText: string) => {
+    updateUrlParams({
+      search: searchText || undefined,
+      page: 1,
+    });
+  };
+
+  const handleSort = (field: string, descending: boolean) => {
+    updateUrlParams({
+      sortBy: field,
+      sortDesc: descending,
+      page: 1,
+    });
+  };
+
+  // ✅ NEW: Handler để update filters đặc biệt
+  const handleFilterChange = (newFilters: QueryParams) => {
+    updateUrlParams({
+      ...newFilters,
+      page: 1, // Reset về page 1 khi filter thay đổi
+    });
+  };
+
+  // ✅ NEW: Clear specific filters
+  const clearFilters = (filterKeys?: string[]) => {
+    if (filterKeys && filterKeys.length > 0) {
+      // Clear specific filters
+      const clearedFilters: Record<string, undefined> = {};
+      filterKeys.forEach(key => {
+        clearedFilters[key] = undefined;
+      });
+      updateUrlParams({
+        ...clearedFilters,
+        page: 1,
+      });
+    } else {
+      // Clear all filters (giữ pagination và sort)
+      const { page, pageSize, search, sortBy, sortDesc, ...filters } = search;
+      const clearedFilters: Record<string, undefined> = {};
+      Object.keys(filters).forEach(key => {
+        clearedFilters[key] = undefined;
+      });
+      updateUrlParams({
+        ...clearedFilters,
+        page: 1,
+      });
+    }
+  };
+
+  const resetPagination = () => {
+    navigate({
+      search: {
+        page: 1,
+        pageSize: 20,
+      },
+    });
+  };
+
+  // ✅ NEW: Extract filters từ params (loại bỏ pagination và sort params)
+  const filters = useMemo(() => {
+    const { page, pageSize, search, sortBy, sortDesc, ...rest } = params;
+    return rest;
+  }, [params]);
+
+  // ✅ NEW: Count active filters
+  const activeFiltersCount = Object.values(filters).filter(
+    v => v !== undefined && v !== null && v !== ''
+  ).length;
+
+  return {
+    ...query,
+    params,
+    filters, // ✅ Expose filters để component có thể sử dụng
+    totalCount: query.data?.totalCount || 0,
+    totalPages: query.data?.totalPages || 0,
+    hasPrevious: query.data?.hasPrevious || false,
+    hasNext: query.data?.hasNext || false,
+    items: query.data?.items || [],
+    activeFiltersCount, // ✅ Expose count để hiển thị badge
+    handlePageChange,
+    handleSearch,
+    handleSort,
+    handleFilterChange, // ✅ NEW: Handler để update filters
+    clearFilters, // ✅ NEW: Clear filters
+    resetPagination,
+  };
+}
+```
+
+**Ví dụ sử dụng:**
+
+```typescript
+// routes/admin/products.tsx (route API)
+import { getRouteApi } from '@tanstack/react-router';
+import { Input, Table, Select, InputNumber, Button, Badge } from 'antd';
+import { usePaginationWithRouter } from '@/hooks/usePaginationWithRouter';
+import { productApiService } from '@/features/products/api/ProductApiService';
+import type { ProductEntity } from '@/features/products/types/entity';
+
+const routeApi = getRouteApi('/admin/products');
+
+export function ProductListPage() {
+  const pagination = usePaginationWithRouter<ProductEntity>({
+    apiService: productApiService,
+    entity: 'products',
+    routeApi,
+  });
+
+  return (
+    <div>
+      {/* Search */}
+      <Input.Search
+        defaultValue={pagination.params.search}
+        onSearch={pagination.handleSearch}
+        allowClear
+        style={{ marginBottom: 16 }}
+      />
+
+      {/* Filters với handlers mới */}
+      <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
+        <Select
+          placeholder="Chọn danh mục"
+          value={pagination.filters.categoryId}
+          onChange={(value) => pagination.handleFilterChange({ categoryId: value || undefined })}
+          allowClear
+          style={{ width: 200 }}
+        >
+          <Select.Option value={1}>Category 1</Select.Option>
+          <Select.Option value={2}>Category 2</Select.Option>
+        </Select>
+
+        <InputNumber
+          placeholder="Giá tối thiểu"
+          value={pagination.filters.minPrice}
+          onChange={(value) => pagination.handleFilterChange({ minPrice: value || undefined })}
+          style={{ width: 150 }}
+        />
+
+        <InputNumber
+          placeholder="Giá tối đa"
+          value={pagination.filters.maxPrice}
+          onChange={(value) => pagination.handleFilterChange({ maxPrice: value || undefined })}
+          style={{ width: 150 }}
+        />
+
+        {/* Badge hiển thị số filters đang active */}
+        {pagination.activeFiltersCount > 0 && (
+          <Badge count={pagination.activeFiltersCount} offset={[-5, 5]}>
+            <Button onClick={() => pagination.clearFilters()}>
+              Xóa bộ lọc
+            </Button>
+          </Badge>
+        )}
+      </div>
+
+      {/* Table */}
+      <Table
+        dataSource={pagination.items}
+        loading={pagination.isLoading}
+        pagination={{
+          current: pagination.params.page,
+          pageSize: pagination.params.pageSize,
+          total: pagination.totalCount,
+          onChange: pagination.handlePageChange,
+          showSizeChanger: true,
+        }}
+      />
+    </div>
+  );
+}
+```
+
+**Ví dụ với URL có filters:**
+
+```typescript
+// URL: /admin/products?page=2&categoryId=5&minPrice=100&maxPrice=500&search=laptop
+
+// Hook tự động đọc tất cả filters từ URL:
+// - pagination.filters.categoryId = 5
+// - pagination.filters.minPrice = 100
+// - pagination.filters.maxPrice = 500
+// - pagination.params.search = 'laptop'
+// - pagination.params.page = 2
+
+// Khi user thay đổi filter:
+pagination.handleFilterChange({ supplierId: 10 });
+// → URL updates: /admin/products?page=1&categoryId=5&supplierId=10&minPrice=100&maxPrice=500&search=laptop
+// → page tự động reset về 1
+
+// Clear specific filters:
+pagination.clearFilters(['minPrice', 'maxPrice']);
+// → URL updates: /admin/products?page=1&categoryId=5&supplierId=10&search=laptop
+
+// Clear all filters:
+pagination.clearFilters();
+// → URL updates: /admin/products?page=1&search=laptop
+// → Giữ lại pagination và search, xóa tất cả filters khác
+```
+
+#### 5.3.3. `usePaginationLocal` - Modal/Drawer (Local State với Advanced Filters)
+
+Hook wrapper cho Modal/Drawer components, quản lý state bằng `useState`. Hỗ trợ đầy đủ pagination, search, sort và **advanced filters**. Không cần router context.
+
+**Khi nào dùng:**
+- ✅ Modal components (không có router context)
+- ✅ Drawer components
+- ✅ Nested components độc lập
+- ✅ Storybook components
+- ✅ Unit tests đơn giản
+- ✅ Modal/Drawer với nhiều filters phức tạp
+- ❌ KHÔNG dùng cho Page components (nên dùng `usePaginationWithRouter` để có URL sync)
+
+**Tính năng:**
+- ✅ Pagination (page, pageSize)
+- ✅ Search
+- ✅ Sort (sortBy, sortDesc)
+- ✅ **Advanced Filters** (categoryId, supplierId, minPrice, maxPrice, etc.)
+- ✅ Filter management (handleFilterChange, clearFilters)
+- ✅ Active filters count
+- ✅ Reset to initial state
+
+**Định nghĩa:**
+
+```typescript
+// src/hooks/usePaginationLocal.ts
+import { useState, useMemo } from 'react';
+import { useApiPaginated } from './useApi';
+import type { BaseApiService, QueryParams } from '../lib/api/base/BaseApiService';
+import type { PagedRequest } from '../lib/axios';
+
+export interface UsePaginationLocalConfig<TData, TFilters extends Record<string, any> = Record<string, any>> {
+  apiService: BaseApiService<TData>;
+  entity: string;
+  initialParams?: Partial<PagedRequest>;
+  initialFilters?: TFilters;
+}
+
+/**
+ * Hook quản lý pagination với local state (dùng cho Modal/Drawer)
+ * Hỗ trợ đầy đủ pagination, search, sort và advanced filters
+ * Tương tự usePaginationWithRouter nhưng dùng useState thay vì URL
+ * 
+ * @example
+ * // Basic usage (không có filters)
+ * const pagination = usePaginationLocal({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   initialParams: { sortBy: 'ProductName' },
+ * });
+ * 
+ * @example
+ * // Advanced usage (với filters)
+ * interface ProductFilters {
+ *   categoryId?: number;
+ *   minPrice?: number;
+ *   maxPrice?: number;
+ * }
+ * 
+ * const pagination = usePaginationLocal<ProductEntity, ProductFilters>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   initialFilters: { categoryId: 1 },
+ * });
+ */
+export function usePaginationLocal<TData = any, TFilters extends Record<string, any> = Record<string, any>>({
+  apiService,
+  entity,
+  initialParams = {},
+  initialFilters = {} as TFilters,
+}: UsePaginationLocalConfig<TData, TFilters>) {
+  // Extract pagination params từ initialParams
+  const {
+    page: initialPage = 1,
+    pageSize: initialPageSize = 20,
+    search: initialSearch,
+    sortBy: initialSortBy = 'id',
+    sortDesc: initialSortDesc = false,
+  } = initialParams;
+
+  // Pagination state
+  const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(initialPageSize);
+  const [search, setSearch] = useState<string>(initialSearch || '');
+  const [sortBy, setSortBy] = useState(initialSortBy);
+  const [sortDesc, setSortDesc] = useState(initialSortDesc);
+
+  // Filters state
+  const [filters, setFilters] = useState<TFilters>(initialFilters);
+
+  // Build params - merge pagination + filters
+  const params: PagedRequest & TFilters = useMemo(() => ({
+    page,
+    pageSize,
+    search: search || undefined,
+    sortBy,
+    sortDesc,
+    ...filters,
+  }), [page, pageSize, search, sortBy, sortDesc, filters]);
+
+  // Fetch data
+  const { data, isLoading, ...query } = useApiPaginated<TData>({
+    apiService,
+    entity,
+    params,
+    options: {
+      placeholderData: (previousData) => previousData,
+      staleTime: 1000 * 60 * 5,
+    },
+  });
+
+  // Actions
+  const handlePageChange = (newPage: number, newPageSize?: number) => {
+    setPage(newPage);
+    if (newPageSize && newPageSize !== pageSize) {
+      setPageSize(newPageSize);
+      setPage(1);
+    }
+  };
+
+  const handleSearch = (searchText: string) => {
+    setSearch(searchText);
+    setPage(1);
+  };
+
+  const handleSort = (field: string, descending: boolean) => {
+    setSortBy(field);
+    setSortDesc(descending);
+    setPage(1);
+  };
+
+  // ✅ NEW: Filter handlers
+  const handleFilterChange = (newFilters: Partial<TFilters>) => {
+    setFilters((prev) => ({
+      ...prev,
+      ...newFilters,
+    }));
+    setPage(1); // Reset về page 1 khi filter thay đổi
+  };
+
+  const clearFilters = (filterKeys?: (keyof TFilters)[]) => {
+    if (filterKeys && filterKeys.length > 0) {
+      // Clear specific filters
+      const clearedFilters: Partial<TFilters> = {};
+      filterKeys.forEach(key => {
+        clearedFilters[key] = undefined as any;
+      });
+      setFilters((prev) => ({
+        ...prev,
+        ...clearedFilters,
+      }));
+    } else {
+      // Clear all filters
+      setFilters(initialFilters);
+    }
+    setPage(1);
+  };
+
+  const resetPagination = () => {
+    setPage(initialPage);
+    setPageSize(initialPageSize);
+    setSearch(initialSearch || '');
+    setSortBy(initialSortBy);
+    setSortDesc(initialSortDesc);
+    setFilters(initialFilters);
+  };
+
+  // ✅ NEW: Extract filters từ params (loại bỏ pagination và sort params)
+  const extractedFilters = useMemo(() => {
+    const { page, pageSize, search, sortBy, sortDesc, ...rest } = params;
+    return rest as TFilters;
+  }, [params]);
+
+  // ✅ NEW: Count active filters
+  const activeFiltersCount = useMemo(() => {
+    return Object.values(extractedFilters).filter(
+      v => v !== undefined && v !== null && v !== ''
+    ).length;
+  }, [extractedFilters]);
+
+  return {
+    ...query,
+    data,
+    isLoading,
+    // Pagination data
+    params,
+    page,
+    pageSize,
+    search,
+    sortBy,
+    sortDesc,
+    totalCount: data?.totalCount || 0,
+    totalPages: data?.totalPages || 0,
+    hasPrevious: data?.hasPrevious || false,
+    hasNext: data?.hasNext || false,
+    items: data?.items || [],
+    // Filters
+    filters: extractedFilters,
+    activeFiltersCount,
+    // Actions
+    handlePageChange,
+    handleSearch,
+    handleSort,
+    handleFilterChange,
+    clearFilters,
+    resetPagination,
+    // Direct setters (nếu cần)
+    setPage,
+    setPageSize,
+    setSearch,
+    setSortBy,
+    setSortDesc,
+    setFilters,
+  };
+}
+```
+
+**Ví dụ sử dụng:**
+
+```typescript
+// Example 1: Basic usage (không có filters)
+// src/features/products/components/ProductSelectionModal.tsx
+import { Modal, Table, Input } from 'antd';
+import { usePaginationLocal } from '@/hooks/usePaginationLocal';
+import { productApiService } from '../api/ProductApiService';
+import type { ProductEntity } from '../types/entity';
+
+interface ProductSelectionModalProps {
+  visible: boolean;
+  onSelect: (product: ProductEntity) => void;
+  onCancel: () => void;
+}
+
+export function ProductSelectionModal({ visible, onSelect, onCancel }: ProductSelectionModalProps) {
+  const pagination = usePaginationLocal<ProductEntity>({
+    apiService: productApiService,
+    entity: 'products',
+    initialParams: {
+      sortBy: 'ProductName',
+      sortDesc: false,
+    },
+  });
+
+  return (
+    <Modal
+      title="Chọn sản phẩm"
+      visible={visible}
+      onCancel={onCancel}
+      footer={null}
+      width={800}
+    >
+      <Input.Search
+        placeholder="Tìm kiếm sản phẩm..."
+        onSearch={pagination.handleSearch}
+        allowClear
+        style={{ marginBottom: 16 }}
+      />
+      <Table
+        dataSource={pagination.items}
+        loading={pagination.isLoading}
+        rowKey="id"
+        pagination={{
+          current: pagination.page,
+          pageSize: pagination.pageSize,
+          total: pagination.totalCount,
+          onChange: pagination.handlePageChange,
+          showSizeChanger: true,
+        }}
+        onRow={(record) => ({
+          onClick: () => onSelect(record),
+          style: { cursor: 'pointer' },
+        })}
+      />
+    </Modal>
+  );
+}
+
+// Example 2: Advanced usage (với filters)
+// src/features/products/components/ProductSelectionModalWithFilters.tsx
+import { Modal, Table, Input, Select, InputNumber, Button, Badge, Space } from 'antd';
+import { FilterOutlined } from '@ant-design/icons';
+import { usePaginationLocal } from '@/hooks/usePaginationLocal';
+import { productApiService } from '../api/ProductApiService';
+import type { ProductEntity } from '../types/entity';
+
+interface ProductFilters {
+  categoryId?: number;
+  supplierId?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  inStock?: boolean;
+}
+
+interface ProductSelectionModalProps {
+  visible: boolean;
+  onSelect: (product: ProductEntity) => void;
+  onCancel: () => void;
+}
+
+export function ProductSelectionModalWithFilters({ visible, onSelect, onCancel }: ProductSelectionModalProps) {
+  const pagination = usePaginationLocal<ProductEntity, ProductFilters>({
+    apiService: productApiService,
+    entity: 'products',
+    initialFilters: {
+      inStock: true, // Default filter
+    },
+    initialParams: {
+      sortBy: 'ProductName',
+      sortDesc: false,
+    },
+  });
+
+  return (
+    <Modal
+      title="Chọn sản phẩm"
+      visible={visible}
+      onCancel={onCancel}
+      footer={null}
+      width={1000}
+    >
+      {/* Search */}
+      <Input.Search
+        placeholder="Tìm kiếm sản phẩm..."
+        onSearch={pagination.handleSearch}
+        allowClear
+        defaultValue={pagination.search}
+        style={{ marginBottom: 16 }}
+      />
+
+      {/* Filters */}
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Select
+          placeholder="Danh mục"
+          value={pagination.filters.categoryId}
+          onChange={(value) => pagination.handleFilterChange({ categoryId: value || undefined })}
+          allowClear
+          style={{ width: 200 }}
+        >
+          <Select.Option value={1}>Category 1</Select.Option>
+          <Select.Option value={2}>Category 2</Select.Option>
+        </Select>
+
+        <Select
+          placeholder="Nhà cung cấp"
+          value={pagination.filters.supplierId}
+          onChange={(value) => pagination.handleFilterChange({ supplierId: value || undefined })}
+          allowClear
+          style={{ width: 200 }}
+        >
+          <Select.Option value={1}>Supplier 1</Select.Option>
+          <Select.Option value={2}>Supplier 2</Select.Option>
+        </Select>
+
+        <InputNumber
+          placeholder="Giá tối thiểu"
+          value={pagination.filters.minPrice}
+          onChange={(value) => pagination.handleFilterChange({ minPrice: value || undefined })}
+          style={{ width: 150 }}
+          min={0}
+        />
+
+        <InputNumber
+          placeholder="Giá tối đa"
+          value={pagination.filters.maxPrice}
+          onChange={(value) => pagination.handleFilterChange({ maxPrice: value || undefined })}
+          style={{ width: 150 }}
+          min={0}
+        />
+
+        {/* Badge hiển thị số filters đang active */}
+        {pagination.activeFiltersCount > 0 && (
+          <Badge count={pagination.activeFiltersCount} offset={[-5, 5]}>
+            <Button
+              icon={<FilterOutlined />}
+              onClick={() => pagination.clearFilters()}
+            >
+              Xóa bộ lọc
+            </Button>
+          </Badge>
+        )}
+      </Space>
+
+      {/* Table */}
+      <Table
+        dataSource={pagination.items}
+        loading={pagination.isLoading}
+        rowKey="id"
+        pagination={{
+          current: pagination.page,
+          pageSize: pagination.pageSize,
+          total: pagination.totalCount,
+          onChange: pagination.handlePageChange,
+          showSizeChanger: true,
+          showTotal: (total) => `Tổng ${total} sản phẩm`,
+        }}
+        onRow={(record) => ({
+          onClick: () => onSelect(record),
+          style: { cursor: 'pointer' },
+        })}
+      />
+    </Modal>
+  );
+}
+```
+
+### 5.4. When to Use Which Hook?
+
+Bảng so sánh và hướng dẫn chọn hook phù hợp:
+
+| Use Case | Hook | Lý do |
+|----------|------|-------|
+| **Page components** (có router context) | `usePaginationWithRouter` | ✅ Có router context, cần URL sync (deep linking, shareable URLs), hỗ trợ filters |
+| **Modal/Drawer** (đơn giản hoặc phức tạp) | `usePaginationLocal` | ✅ Không có router context, hỗ trợ đầy đủ pagination + filters |
+| **Nested components** (nhận params từ props) | `useApiPaginated` | ✅ Nhận params từ parent, không quản lý state |
+| **Custom pagination logic** | `useApiPaginated` | ✅ Cần full control, tự implement handlers |
+| **Storybook components** | `usePaginationLocal` | ✅ Không cần router, dễ test |
+| **Unit tests** | `useApiPaginated` hoặc `usePaginationLocal` | ✅ Dễ mock, không cần router context |
+
+
+**Decision Tree:**
+
+```
+Có router context?
+├─ YES → Page component?
+│   ├─ YES → usePaginationWithRouter ✅
+│   └─ NO → useApiPaginated (custom logic)
+│
+└─ NO → Modal/Drawer?
+    ├─ YES → usePaginationLocal ✅ (hỗ trợ đầy đủ filters)
+    └─ NO → Nhận params từ props?
+        ├─ YES → useApiPaginated ✅
+        └─ NO → usePaginationLocal ✅
+```
+
+**Ví dụ cụ thể:**
+
+```typescript
+// ✅ PATTERN 1: Page Component → usePaginationWithRouter
+function ProductListPage() {
+  const routeApi = getRouteApi('/admin/products');
+  const pagination = usePaginationWithRouter({
+    apiService: productApiService,
+    entity: 'products',
+    routeApi,
+  });
+  // URL: /admin/products?page=2&pageSize=20&search=laptop
+  // ✅ Deep linking, shareable URLs, browser back/forward
+}
+
+// ✅ PATTERN 2: Modal đơn giản → usePaginationLocal
+function ProductSelectionModal() {
+  const pagination = usePaginationLocal({
+    apiService: productApiService,
+    entity: 'products',
+  });
+  // ✅ Local state, chỉ pagination + search + sort
+}
+
+// ✅ PATTERN 2b: Modal với nhiều filters → usePaginationLocal (đã cập nhật)
+function ProductSelectionModalWithFilters() {
+  interface ProductFilters {
+    categoryId?: number;
+    minPrice?: number;
+    maxPrice?: number;
+  }
+
+  const pagination = usePaginationLocal<ProductEntity, ProductFilters>({
+    apiService: productApiService,
+    entity: 'products',
+    initialFilters: { inStock: true },
+  });
+  // ✅ Local state với filters phức tạp (dùng cùng hook usePaginationLocal)
+}
+
+// ✅ PATTERN 3: Nested Component → useApiPaginated
+function ProductTable({ params, onPageChange }: Props) {
+  const { data } = useApiPaginated({
+    apiService: productApiService,
+    entity: 'products',
+    params, // Nhận từ parent
+  });
+  // ✅ Nhận params từ props, không quản lý state
 }
 ```
 
@@ -2485,6 +3393,10 @@ Hệ thống **Hybrid Approach** này cung cấp:
 ✅ **BaseApiService** - CRUD cơ bản với xử lý `ApiResponse<T>` và `PagedList<T>` tự động
 ✅ **Feature Extensions** - Mỗi feature extend BaseApiService và thêm custom methods
 ✅ **Universal hooks** - Có thể dùng cho bất kỳ entity nào
+✅ **Pagination hooks** - 3 hooks cho các use case khác nhau:
+   - `useApiPaginated` - Core hook (data fetching only)
+   - `usePaginationWithRouter` - Page components (URL-state với filters)
+   - `usePaginationLocal` - Modal/Drawer (local state với đầy đủ filters support)
 ✅ **Type-safe** - TypeScript generics đảm bảo type safety
 ✅ **Reusable** - Tái sử dụng code CRUD, không lặp lại
 ✅ **Flexible** - Linh hoạt cho custom methods và endpoints đặc biệt
