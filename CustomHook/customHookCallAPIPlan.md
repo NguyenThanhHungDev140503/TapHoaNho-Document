@@ -190,41 +190,475 @@ src/
 
 ### Bước 5: Setup QueryClient Provider
 
-## 4. Code Implementation
+## 4. Giới thiệu và Giải thích chi tiết các Custom Hooks
 
+Phần này giới thiệu và giải thích chi tiết về tất cả các custom hooks có sẵn trong hệ thống, bao gồm mục đích, cách sử dụng, tham số, giá trị trả về, và luồng hoạt động của từng hook. Đọc phần này trước khi xem code định nghĩa và examples.
 
+### 4.1. Giới thiệu các Custom Hooks
 
-### 4.5. Setup QueryClient Provider (`src/app/main.tsx`)
+#### 4.1.1. useApiList - Lấy danh sách tất cả items (không phân trang)
 
+**Mục đích**: Lấy toàn bộ danh sách items từ API mà không cần phân trang. Phù hợp cho dropdown, select options, hoặc danh sách ngắn.
+
+**Khi nào sử dụng**:
+- Dropdown/Select components cần danh sách đầy đủ
+- Danh sách ngắn (< 50 items)
+- Không cần pagination
+
+**Tham số chính**:
+- `apiService`: Instance của BaseApiService
+- `entity`: Tên entity (string) để tạo query keys
+- `params?`: Query parameters tùy chọn (filters, search, etc.)
+- `options?`: TanStack Query options (staleTime, enabled, etc.)
+
+**Giá trị trả về**:
+- `data`: `TData[] | undefined` - Mảng items
+- `isLoading`, `isFetching`, `isRefetching`: Trạng thái loading
+- `isError`, `error`: Trạng thái lỗi
+- `refetch`: Hàm để refetch thủ công
+
+**Ví dụ sử dụng cơ bản**:
 ```typescript
-// shiny-carnival/frontend/src/app/main.tsx
-import { StrictMode } from 'react'
-import ReactDOM from 'react-dom/client'
-import './index.css'
-import { RouterProvider } from '@tanstack/react-router';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import 'antd/dist/reset.css';
-import { router } from './routes/routeTree';
-import { queryClient } from '../lib/queryClient';
-
-// Render the app
-const rootElement = document.getElementById('root')!
-if (!rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement)
-  root.render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-        {/* React Query Devtools - chỉ hiện trong development */}
-        <ReactQueryDevtools initialIsOpen={false} />
-      </QueryClientProvider>
-    </StrictMode>,
-  )
-}
+const { data: categories, isLoading } = useApiList<CategoryEntity>({
+  apiService: categoryApiService,
+  entity: 'categories',
+});
 ```
 
-### 4.6. Product API Service Example - Hybrid Approach (`src/features/products/api/ProductApiService.ts`)
+---
+
+#### 4.1.2. useApiPaginated - Lấy danh sách có phân trang
+
+**Mục đích**: Lấy danh sách items với hỗ trợ phân trang, tìm kiếm, sắp xếp. Hook phổ biến nhất cho các trang danh sách.
+
+**Khi nào sử dụng**:
+- Trang danh sách với bảng (Table)
+- Cần phân trang, tìm kiếm, sắp xếp
+- Danh sách dài (> 50 items)
+
+**Tham số chính**:
+- `apiService`: Instance của BaseApiService
+- `entity`: Tên entity
+- `params?`: `PagedRequest` với các fields:
+  - `page`: Số trang (1-based)
+  - `pageSize`: Số items mỗi trang
+  - `search?`: Text tìm kiếm
+  - `sortBy?`: Field để sắp xếp
+  - `sortDesc?`: Sắp xếp giảm dần (default: true)
+- `options?`: TanStack Query options
+
+**Giá trị trả về**:
+- `data`: `PagedList<TData> | undefined` - Object chứa:
+  - `items`: Mảng items
+  - `totalCount`: Tổng số items
+  - `totalPages`: Tổng số trang
+  - `hasPrevious`, `hasNext`: Có trang trước/sau
+  - `page`, `pageSize`: Thông tin pagination hiện tại
+- Các trạng thái loading, error tương tự `useApiList`
+
+**Ví dụ sử dụng cơ bản**:
+```typescript
+const { data, isLoading } = useApiPaginated<ProductEntity>({
+  apiService: productApiService,
+  entity: 'products',
+  params: { page: 1, pageSize: 20, search: 'laptop' },
+});
+```
+
+---
+
+#### 4.1.3. useApiDetail - Lấy chi tiết theo ID
+
+**Mục đích**: Lấy thông tin chi tiết của một item theo ID. Tự động cache và invalidate khi có mutation.
+
+**Khi nào sử dụng**:
+- Trang chi tiết (Detail page)
+- Modal hiển thị thông tin
+- Form edit cần load dữ liệu hiện tại
+
+**Tham số chính**:
+- `apiService`: Instance của BaseApiService
+- `entity`: Tên entity
+- `id`: `number | string | undefined` - ID của item (undefined → query disabled)
+- `options?`: TanStack Query options
+
+**Giá trị trả về**:
+- `data`: `TData | undefined` - Item chi tiết
+- Các trạng thái loading, error tương tự
+
+**Ví dụ sử dụng cơ bản**:
+```typescript
+const { data: product, isLoading } = useApiDetail<ProductEntity>({
+  apiService: productApiService,
+  entity: 'products',
+  id: productId, // undefined → không fetch
+});
+```
+
+---
+
+#### 4.1.4. useApiCreate - Tạo mới item
+
+**Mục đích**: Tạo item mới. Tự động invalidate danh sách sau khi thành công.
+
+**Khi nào sử dụng**:
+- Form tạo mới
+- Modal create
+- Bulk create operations
+
+**Tham số chính**:
+- `apiService`: Instance của BaseApiService
+- `entity`: Tên entity
+- `invalidateQueries?`: Array các query keys để invalidate (optional, mặc định invalidate list)
+- `options?`: TanStack Query mutation options (onSuccess, onError, etc.)
+
+**Giá trị trả về**:
+- `mutate`: `(data: TCreateData) => void` - Fire and forget
+- `mutateAsync`: `(data: TCreateData) => Promise<TData>` - Returns Promise
+- `isPending`: Đang xử lý
+- `isSuccess`, `isError`: Trạng thái
+- `data`: Item vừa tạo
+- `error`: Lỗi nếu có
+- `reset`: Reset mutation state
+
+**Ví dụ sử dụng cơ bản**:
+```typescript
+const createProduct = useApiCreate<ProductEntity, CreateProductRequest>({
+  apiService: productApiService,
+  entity: 'products',
+});
+
+// Sử dụng
+createProduct.mutate({ productName: 'New Product', price: 100 });
+```
+
+---
+
+#### 4.1.5. useApiUpdate - Cập nhật toàn bộ item (PUT)
+
+**Mục đích**: Cập nhật toàn bộ item (full replacement). Tự động invalidate detail và list cache.
+
+**Khi nào sử dụng**:
+- Form edit với full replacement
+- Update tất cả fields của item
+
+**Tham số chính**:
+- `apiService`: Instance của BaseApiService
+- `entity`: Tên entity
+- `invalidateQueries?`: Query keys để invalidate
+- `options?`: Mutation options
+
+**Giá trị trả về**:
+- Tương tự `useApiCreate` nhưng `mutate` nhận `{ id, data }`
+
+**Ví dụ sử dụng cơ bản**:
+```typescript
+const updateProduct = useApiUpdate<ProductEntity, UpdateProductRequest>({
+  apiService: productApiService,
+  entity: 'products',
+});
+
+// Sử dụng
+updateProduct.mutate({ 
+  id: 123, 
+  data: { productName: 'Updated', price: 200 } 
+});
+```
+
+---
+
+#### 4.1.6. useApiPatch - Cập nhật một phần item (PATCH)
+
+**Mục đích**: Cập nhật một phần item (partial update). ⚠️ **CHỈ hỗ trợ cho Orders và Inventory**.
+
+**Khi nào sử dụng**:
+- Update status của Order
+- Update quantity của Inventory
+- Chỉ cần thay đổi một vài fields
+
+**Tham số chính**:
+- Tương tự `useApiUpdate`
+
+**Giá trị trả về**:
+- Tương tự `useApiUpdate`
+
+**Ví dụ sử dụng cơ bản**:
+```typescript
+// Chỉ dùng cho Orders và Inventory
+const updateOrderStatus = useApiPatch<OrderEntity, { status: string }>({
+  apiService: orderApiService,
+  entity: 'orders',
+});
+
+updateOrderStatus.mutate({ 
+  id: 123, 
+  data: { status: 'paid' } // lowercase
+});
+```
+
+---
+
+#### 4.1.7. useApiDelete - Xóa item
+
+**Mục đích**: Xóa item (soft delete). Tự động invalidate list và detail cache.
+
+**Khi nào sử dụng**:
+- Nút xóa trong bảng
+- Delete confirmation modal
+- Bulk delete
+
+**Tham số chính**:
+- `apiService`: Instance của BaseApiService
+- `entity`: Tên entity
+- `invalidateQueries?`: Query keys để invalidate
+- `options?`: Mutation options
+
+**Giá trị trả về**:
+- Tương tự `useApiCreate` nhưng `mutate` chỉ nhận `id`
+
+**Ví dụ sử dụng cơ bản**:
+```typescript
+const deleteProduct = useApiDelete({
+  apiService: productApiService,
+  entity: 'products',
+});
+
+// Sử dụng
+deleteProduct.mutate(123); // id
+```
+
+---
+
+#### 4.1.8. useApiCustomQuery - Custom Query Hook
+
+**Mục đích**: Tạo query tùy chỉnh cho các endpoint đặc biệt không thuộc CRUD chuẩn (reports, statistics, search đặc biệt, etc.).
+
+**Khi nào sử dụng**:
+- Endpoint không theo pattern CRUD chuẩn
+- Reports, statistics, analytics
+- Search với logic phức tạp
+- Aggregations, calculations
+
+**Tham số chính**:
+- `entity`: Tên entity
+- `queryKey`: Array để tạo unique query key
+- `queryFn`: Function trả về Promise<TData>
+- `options?`: TanStack Query options
+
+**Giá trị trả về**:
+- Tương tự `useApiList` nhưng với type `TData` tùy chỉnh
+
+**Ví dụ sử dụng cơ bản**:
+```typescript
+const { data: report } = useApiCustomQuery<ReportData>({
+  entity: 'products',
+  queryKey: ['report', startDate, endDate],
+  queryFn: () => productApiService.custom('GET', '/report', { startDate, endDate }),
+});
+```
+
+---
+
+#### 4.1.9. useApiCustomMutation - Custom Mutation Hook
+
+**Mục đích**: Tạo mutation tùy chỉnh cho các endpoint đặc biệt (bulk operations, special endpoints, etc.).
+
+**Khi nào sử dụng**:
+- Bulk update/delete
+- Special endpoints không theo pattern CRUD
+- Complex operations
+
+**Tham số chính**:
+- `apiService`: Instance của BaseApiService
+- `entity`: Tên entity
+- `mutationFn`: Function nhận variables, trả về Promise<TData>
+- `invalidateQueries?`: Query keys để invalidate
+- `options?`: Mutation options
+
+**Giá trị trả về**:
+- Tương tự các mutation hooks khác
+
+**Ví dụ sử dụng cơ bản**:
+```typescript
+const bulkUpdate = useApiCustomMutation<ProductEntity[], { ids: number[], data: Partial<ProductEntity> }>({
+  apiService: productApiService,
+  entity: 'products',
+  mutationFn: (vars) => productApiService.custom('POST', '/bulk-update', vars),
+});
+```
+
+---
+
+#### 4.1.10. usePaginationWithRouter - URL-based Pagination
+
+**Mục đích**: Quản lý pagination với đồng bộ URL state. Pagination, search, sort, filters được lưu trong URL query params. Phù hợp cho page components.
+
+**Khi nào sử dụng**:
+- Page components với TanStack Router
+- Cần share URL với pagination state
+- SEO-friendly URLs
+- Browser back/forward support
+
+**Tham số chính**:
+- `apiService`: Instance của BaseApiService
+- `entity`: Tên entity
+- `routeApi`: TanStack Router route API (từ `getRouteApi()`)
+- `additionalParams?`: Static params bổ sung
+
+**Giá trị trả về**:
+- Tất cả giá trị từ `useApiPaginated`
+- `params`: Current pagination params từ URL
+- `filters`: Current filters (loại bỏ pagination params)
+- `totalCount`, `totalPages`, `hasPrevious`, `hasNext`: Pagination metadata
+- `items`: Mảng items
+- `handlePageChange`: Update page trong URL
+- `handleSearch`: Update search trong URL
+- `handleSort`: Update sort trong URL
+- `handleFilterChange`: Update filters trong URL
+- `clearFilters`: Clear filters
+- `resetPagination`: Reset về page 1
+- `activeFiltersCount`: Số filters đang active
+
+**Ví dụ sử dụng cơ bản**:
+```typescript
+const routeApi = getRouteApi('/admin/products');
+const {
+  items,
+  isLoading,
+  params,
+  handlePageChange,
+  handleSearch,
+} = usePaginationWithRouter<ProductEntity>({
+  apiService: productApiService,
+  entity: 'products',
+  routeApi,
+});
+```
+
+---
+
+#### 4.1.11. usePaginationWithPrefetch - Prefetching Support
+
+**Mục đích**: Quản lý pagination với khả năng prefetch trang tiếp theo/trước để cải thiện UX. Tự động prefetch khi user hover hoặc sắp cần data. Dựa trên `useApiPaginated` với thêm tính năng prefetching.
+
+**Khi nào sử dụng**:
+- Cần cải thiện UX với prefetching
+- User thường xuyên navigate qua các trang
+- Có thể prefetch khi hover vào nút next/previous
+- Cần prefetch detail khi hover vào item trong danh sách
+
+**Tham số chính**:
+- `apiService`: Instance của BaseApiService
+- `entity`: Tên entity
+- `params?`: `PagedRequest` với pagination, search, sort params
+- `additionalParams?`: Static params bổ sung (filters, etc.)
+- `options?`: TanStack Query options
+
+**Giá trị trả về**:
+- Tất cả giá trị từ `useApiPaginated`:
+  - `data`: `PagedList<TData>` - Pagination data
+  - `items`: `TData[]` - Mảng items
+  - `totalCount`, `totalPages`, `hasNext`, `hasPrevious`: Pagination metadata
+  - `isLoading`, `isFetching`, `isError`, `error`: Trạng thái
+- `prefetchNextPage`: `() => void` - Prefetch trang tiếp theo
+- `prefetchPreviousPage`: `() => void` - Prefetch trang trước
+- `prefetchDetail`: `(id: number | string) => void` - Prefetch detail của item theo ID
+
+**Ví dụ sử dụng cơ bản**:
+```typescript
+const {
+  items,
+  isLoading,
+  prefetchNextPage,
+  prefetchDetail,
+} = usePaginationWithPrefetch<ProductEntity>({
+  apiService: productApiService,
+  entity: 'products',
+  params: { page: 1, pageSize: 20 },
+});
+
+// Prefetch khi hover vào nút next
+<Button onMouseEnter={() => prefetchNextPage()}>Next</Button>
+
+// Prefetch detail khi hover vào item
+<div onMouseEnter={() => prefetchDetail(product.id)}>
+  {product.productName}
+</div>
+```
+
+**📊 DATA FLOW DIAGRAM:**
+
+```mermaid
+graph TD
+    A[Component] -->|usePaginationWithPrefetch| B[Hook]
+    B -->|useApiPaginated| C[Fetch Current Page]
+    C -->|Data| D[Component Renders]
+    
+    D -->|User Hover Next| E[prefetchNextPage]
+    E -->|Check hasNext| F{Has Next?}
+    F -->|No| G[Skip]
+    F -->|Yes| H[Build Next Params]
+    H -->|Debounce?| I{Debounce Enabled?}
+    I -->|Yes| J[Wait debounceMs]
+    I -->|No| K[Prefetch Query]
+    J --> K
+    K -->|queryClient.prefetchQuery| L[Backend API]
+    L -->|Cache Result| M[Query Cache]
+    
+    D -->|User Hover Item| N[prefetchDetail id]
+    N -->|Per-item Debounce| O[Prefetch Detail]
+    O -->|queryClient.prefetchQuery| P[Backend API]
+    P -->|Cache Detail| M
+    
+    D -->|User Click Next| Q[Navigate to Page 2]
+    Q -->|Check Cache| R{Cache Exists?}
+    R -->|Yes| S[Instant Load from Cache]
+    R -->|No| T[Fetch from API]
+    S --> U[Component Re-render]
+    T --> U
+    
+    style E fill:#e1f5ff
+    style N fill:#e1f5ff
+    style K fill:#e8f5e9
+    style O fill:#e8f5e9
+    style M fill:#f3e5f5
+    style S fill:#c8e6c9
+```
+
+---
+
+### 4.4. Tổng kết các Hooks
+
+**Query Hooks** (Đọc dữ liệu):
+- `useApiList`: Danh sách không phân trang
+- `useApiPaginated`: Danh sách có phân trang ⭐ (Phổ biến nhất)
+- `useApiDetail`: Chi tiết theo ID
+- `useApiCustomQuery`: Query tùy chỉnh
+
+**Mutation Hooks** (Thay đổi dữ liệu):
+- `useApiCreate`: Tạo mới
+- `useApiUpdate`: Cập nhật toàn bộ (PUT)
+- `useApiPatch`: Cập nhật một phần (PATCH) - ⚠️ Chỉ Orders & Inventory
+- `useApiDelete`: Xóa
+- `useApiCustomMutation`: Mutation tùy chỉnh
+
+**Pagination Management Hooks**:
+- `usePaginationWithRouter`: URL-based pagination ⭐ (Khuyến nghị cho pages)
+- `usePaginationWithPrefetch`: Prefetching support
+
+**Lưu ý quan trọng**:
+- Tất cả hooks đều type-safe với TypeScript generics
+- Tự động cache management và invalidation
+- Hỗ trợ optimistic updates
+- Tích hợp với TanStack Query DevTools
+
+---
+
+### 4.5. Chi tiết Tham số, Đầu ra và Luồng hoạt động
+
+Phần này giải thích chi tiết về tham số đầu vào, giá trị trả về, và luồng hoạt động của từng hook để giúp bạn hiểu sâu hơn về cách chúng hoạt động.
+
+#### 4.5.1. useApiList - GET All Items (No Pagination)
 
 ```typescript
 // shiny-carnival/frontend/src/features/products/api/ProductApiService.ts
@@ -302,7 +736,7 @@ export class ProductApiService extends BaseApiService<
 export const productApiService = new ProductApiService();
 ```
 
-### 4.7. Product Hooks Example (`src/features/products/hooks/useProducts.ts`)
+### 5.3. Product Hooks Example (`src/features/products/hooks/useProducts.ts`)
 
 ```typescript
 // shiny-carnival/frontend/src/features/products/hooks/useProducts.ts
@@ -420,7 +854,7 @@ export const useDeleteProduct = () => {
 };
 ```
 
-### 4.8. Component Usage Example
+### 5.4. Component Usage Example
 
 #### Product List Component (URL-state với TanStack Router)
 
@@ -711,7 +1145,7 @@ export const ProductForm = ({ productId }: ProductFormProps) => {
 };
 ```
 
-### 4.9. Infinite Scroll Hook (⚠️ KHÔNG ĐƯỢC ĐỊNH NGHĨA - ĐÃ XÓA)
+### 5.5. Infinite Scroll Hook (⚠️ KHÔNG ĐƯỢC ĐỊNH NGHĨA - ĐÃ XÓA)
 
 ```typescript
 // shiny-carnival/frontend/src/hooks/useApiInfinite.ts
@@ -774,9 +1208,9 @@ export function useApiInfinite<TData = any, TError = Error>({
 }
 ```
 
-### 4.10. Pagination Management Hooks
+### 5.6. Pagination Management Hooks
 
-#### 4.10.1. URL-based Pagination Hook (usePaginationWithRouter)
+#### 5.6.1. URL-based Pagination Hook (usePaginationWithRouter)
 
 ```typescript
 // shiny-carnival/frontend/src/hooks/usePaginationWithRouter.ts
@@ -959,9 +1393,9 @@ export function usePaginationWithRouter<TData = any>({
 }
 ```
 
-### 4.12. Usage Examples Chi tiết cho từng Hook
+### 5.7. Usage Examples Chi tiết cho từng Hook
 
-#### 4.12.1. useApiInfinite - Infinite Scroll Hook (⚠️ KHÔNG ĐƯỢC ĐỊNH NGHĨA - ĐÃ XÓA)
+#### 5.7.1. useApiInfinite - Infinite Scroll Hook (⚠️ KHÔNG ĐƯỢC ĐỊNH NGHĨA - ĐÃ XÓA)
 
 **📌 Basic Usage:**
 
@@ -1193,7 +1627,7 @@ useEffect(() => {
 }, [categoryId, minPrice, refetch]);
 ```
 
-#### 4.12.2. usePaginationWithRouter - URL-based Pagination (Page Components)
+#### 5.7.2. usePaginationWithRouter - URL-based Pagination (Page Components)
 
 **📌 Basic Usage:**
 
@@ -1383,7 +1817,7 @@ navigate({
 // TanStack Router tự động preserve search params
 ```
 
-#### 4.12.4. usePaginationWithRouter với Filters - Page Components (URL-state)
+#### 5.7.4. usePaginationWithRouter với Filters - Page Components (URL-state)
 
 **📌 Basic Usage với Filters:**
 
@@ -1714,7 +2148,7 @@ const handlePriceRangeChange = (min?: number, max?: number) => {
 };
 ```
 
-#### 4.12.5. usePaginationWithPrefetch - Prefetching Support
+#### 5.7.5. usePaginationWithPrefetch - Prefetching Support
 
 **📌 Basic Usage:**
 
@@ -1932,9 +2366,8 @@ const prefetchMultiplePages = useCallback(() => {
 }, [hasNext, prefetchNextPage]);
 ```
 
-### 4.13. Chi tiết Tham số, Đầu ra và Luồng hoạt động
 
-#### 4.13.1. useApiList - GET All Items (No Pagination)
+#### 4.5.1. useApiList - GET All Items (No Pagination)
 
 **📥 INPUT PARAMETERS:**
 
@@ -2129,7 +2562,7 @@ const { data: products } = useApiList({
 });
 ```
 
-#### 4.13.2. useApiPaginated - GET Paged Items
+#### 4.5.2. useApiPaginated - GET Paged Items
 
 **📥 INPUT PARAMETERS:**
 
@@ -2414,7 +2847,7 @@ queryClient.invalidateQueries({ queryKey: ['products'] });
 // → Next access will refetch
 ```
 
-#### 4.13.3. useApiInfinite - Infinite Scroll
+#### 4.5.3. useApiDetail - GET by ID
 
 **📥 INPUT PARAMETERS:**
 
@@ -2712,7 +3145,7 @@ queryClient.invalidateQueries({ queryKey: ['products'] });
 // → All infinite queries invalidated
 ```
 
-#### 4.13.4. usePaginationWithRouter - URL Sync Hook (Page Components)
+#### 4.5.4. useApiCreate - CREATE Mutation
 
 **📥 INPUT PARAMETERS:**
 
@@ -2921,7 +3354,7 @@ navigate({
 });
 ```
 
-#### 4.13.6. useApiDetail - GET by ID
+#### 4.5.5. useApiUpdate - UPDATE Mutation (Full Replace)
 
 **📥 INPUT PARAMETERS:**
 
@@ -3136,7 +3569,7 @@ mutation.mutate({ id: 123, productName: 'New Name' });
 // Different cache → Separate fetch
 ```
 
-#### 4.13.7. useApiCreate - CREATE Mutation
+#### 4.5.6. useApiPatch - PATCH Mutation (Partial Update)
 
 **📥 INPUT PARAMETERS:**
 
@@ -3427,7 +3860,7 @@ const onSubmit = form.handleSubmit((data) => {
 </form>
 ```
 
-#### 4.13.8. useApiUpdate - UPDATE Mutation (Full Replace)
+#### 4.5.7. useApiDelete - DELETE Mutation
 
 **📥 INPUT PARAMETERS:**
 
@@ -3636,7 +4069,7 @@ const onSubmit = form.handleSubmit((data) => {
 });
 ```
 
-#### 4.13.9. useApiPatch - PATCH Mutation (Partial Update)
+#### 4.5.8. useApiCustomQuery - Custom Query Hook
 
 **📥 INPUT PARAMETERS:**
 
@@ -3703,6 +4136,28 @@ interface UseApiPatchConfig<TData, TPatchData, TError = Error> {
    └─ Error
       ↓
       10. Rollback optimistic update
+```
+
+**📊 DATA FLOW DIAGRAM:**
+
+```mermaid
+graph TD
+    A[Component] -->|Partial Data| B[mutate id, partialData]
+    B -->|onMutate| C[Optimistic Update]
+    C -->|Update Cache| D[Update UI Immediately]
+    B -->|apiService.patch| E[Backend API]
+    E -->|PATCH /api/products/123| F{Success?}
+    F -->|Yes 200| G[onSuccess]
+    F -->|No| H[onError]
+    G -->|Invalidate| I[Refetch Detail]
+    G -->|Update Cache| J[Return Full Object]
+    H -->|Rollback| K[Restore Previous State]
+    J --> L[Component Re-render]
+    K --> L
+    
+    style C fill:#e8f5e9
+    style E fill:#fff4e6
+    style I fill:#f3e5f5
 ```
 
 **📊 PATCH vs PUT:**
@@ -3828,7 +4283,7 @@ const patchProduct = useApiPatch({
 />
 ```
 
-#### 4.13.10. useApiDelete - DELETE Mutation
+#### 4.5.9. useApiCustomMutation - Custom Mutation Hook
 
 **📥 INPUT PARAMETERS:**
 
@@ -4078,7 +4533,7 @@ const handleBulkDelete = async (ids: number[]) => {
 </Popconfirm>
 ```
 
-#### 4.13.11. useApiCustomQuery - Custom Query Hook
+#### 4.5.10. usePaginationWithRouter - URL Sync Hook (Page Components)
 
 **📥 INPUT PARAMETERS:**
 
@@ -4147,6 +4602,29 @@ interface UseApiCustomQueryConfig<TData, TError = Error> {
 8. Cache với custom key
    ↓
 9. Component re-render với data
+```
+
+**📊 DATA FLOW DIAGRAM:**
+
+```mermaid
+graph TD
+    A[Component] -->|Call useApiCustomQuery| B[Hook]
+    B -->|Build Query Key| C[Query Key Factory]
+    C -->|entity + queryKey| D[Full Query Key]
+    D -->|['products', 'stats', year:2024]| E{Check Cache}
+    E -->|Cache Hit| F[Return Cached Data]
+    E -->|Cache Miss| G[Call Custom queryFn]
+    G -->|apiService.custom| H[Backend API]
+    H -->|GET /api/products/stats| I{Success?}
+    I -->|Yes| J[Update Cache]
+    I -->|No| K[Set Error State]
+    J --> L[Return Custom Data]
+    K --> L
+    L --> A
+    
+    style G fill:#e1f5ff
+    style H fill:#fff4e6
+    style D fill:#f3e5f5
 ```
 
 **⚙️ INTERNAL MECHANISM:**
@@ -4235,7 +4713,7 @@ const { data: report } = useApiCustomQuery({
 });
 ```
 
-#### 4.13.12. useApiCustomMutation - Custom Mutation Hook
+#### 4.5.11. usePaginationWithPrefetch - Prefetching Support
 
 **📥 INPUT PARAMETERS:**
 
@@ -4306,6 +4784,27 @@ interface UseApiCustomMutationConfig<TData, TVariables, TError = Error> {
    └─ Error
       ↓
       9. onError callback
+```
+
+**📊 DATA FLOW DIAGRAM:**
+
+```mermaid
+graph TD
+    A[Component] -->|Custom Action| B[mutate variables]
+    B -->|Custom mutationFn| C[apiService.custom]
+    C -->|Custom Endpoint| D[Backend API]
+    D -->|POST /api/products/bulk-update| E{Success?}
+    E -->|Yes| F[onSuccess]
+    E -->|No| G[onError]
+    F -->|Invalidate Queries| H[queryClient.invalidateQueries]
+    H -->|['products', 'list']| I[Refetch Lists]
+    H -->|['products', 'stats']| J[Refetch Stats]
+    F -->|Return Data| K[Component Re-render]
+    G -->|Show Error| K
+    
+    style C fill:#e1f5ff
+    style D fill:#fff4e6
+    style H fill:#f3e5f5
 ```
 
 **⚙️ INTERNAL MECHANISM:**
@@ -4487,7 +4986,2124 @@ const publishProduct = useApiCustomMutation({
 └─────────────────────────┴──────────────────────────────────────────┘
 ```
 
-## 5. Hướng dẫn Sử dụng cho Entity Khác
+---
+
+## 5. Code Định nghĩa từng Hook
+
+Phần này chứa code implementation đầy đủ của tất cả các hooks. Đây là code thực tế để copy vào project.
+
+### 5.1. Setup QueryClient Provider
+
+Trước khi sử dụng các hooks, cần setup QueryClient Provider trong ứng dụng.
+
+### 5.2. Code Định nghĩa từng Hook
+
+#### 5.2.1. useApiList - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/useApi.ts
+import { useQuery } from '@tanstack/react-query';
+import type { UseQueryOptions, QueryObserverResult } from '@tanstack/react-query';
+import { createQueryKeys } from './useApi';
+import type { BaseApiService } from '../lib/api/base/BaseApiService';
+import type { QueryParams } from '../lib/api/types/api.types';
+
+export interface UseApiListConfig<TData, TError = Error> {
+  // REQUIRED
+  apiService: BaseApiService<TData>;
+  entity: string;
+
+  // OPTIONAL
+  params?: QueryParams;
+  options?: UseQueryOptions<TData[], TError>;
+}
+
+/**
+ * Hook để lấy danh sách tất cả items (không phân trang)
+ * 
+ * @example
+ * ```typescript
+ * const { data, isLoading } = useApiList<ProductEntity>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   params: { categoryId: 5 },
+ * });
+ * ```
+ */
+export function useApiList<TData, TError = Error>({
+  apiService,
+  entity,
+  params,
+  options,
+}: UseApiListConfig<TData, TError>) {
+  // 1. Tạo query keys
+  const queryKeys = createQueryKeys(entity);
+  const queryKey = queryKeys.list(params);
+  // Result: ['products', 'list', { categoryId: 5 }]
+
+  // 2. useQuery từ TanStack Query
+  return useQuery<TData[], TError>({
+    queryKey,
+    queryFn: () => apiService.getAll(params),
+    ...options,
+  });
+
+  // 3. TanStack Query tự động:
+  //    - Cache management
+  //    - Deduplication (không fetch duplicate requests)
+  //    - Background refetch
+  //    - Retry on error
+  //    - Garbage collection
+}
+```
+
+#### 5.2.2. useApiPaginated - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/useApi.ts
+import { useQuery } from '@tanstack/react-query';
+import type { UseQueryOptions, QueryObserverResult } from '@tanstack/react-query';
+import { createQueryKeys } from './useApi';
+import type { BaseApiService } from '../lib/api/base/BaseApiService';
+import type { PagedRequest, PagedList } from '../lib/axios';
+
+export interface UseApiPaginatedConfig<TData, TError = Error> {
+  // REQUIRED
+  apiService: BaseApiService<TData>;
+  entity: string;
+
+  // OPTIONAL
+  params?: PagedRequest;
+  options?: Omit<UseQueryOptions<PagedList<TData>, TError>, 'queryKey' | 'queryFn'>;
+}
+
+/**
+ * Hook để lấy danh sách items có phân trang
+ * 
+ * @example
+ * ```typescript
+ * const { data, isLoading } = useApiPaginated<ProductEntity>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   params: { page: 1, pageSize: 20, search: 'laptop' },
+ * });
+ * ```
+ */
+export function useApiPaginated<TData, TError = Error>({
+  apiService,
+  entity,
+  params,
+  options,
+}: UseApiPaginatedConfig<TData, TError>) {
+  // 1. Tạo query key với pagination params
+  const queryKeys = createQueryKeys(entity);
+  const queryKey = queryKeys.list(params);
+  // Key thay đổi khi page/pageSize/search/sort thay đổi
+  // → Trigger new fetch
+
+  // 2. useQuery
+  return useQuery<PagedList<TData>, TError>({
+    queryKey,
+    queryFn: () => apiService.getPaginated(params),
+
+    // Keep previous data while fetching new page
+    placeholderData: (previousData) => previousData,
+    // → Smooth transition, no loading spinner between pages
+
+    ...options,
+  });
+
+  // 3. Cache strategy:
+  //    - Mỗi page có cache riêng
+  //    - Page 1 cache: ['products', 'list', {page:1, pageSize:20}]
+  //    - Page 2 cache: ['products', 'list', {page:2, pageSize:20}]
+  //    - Search cache: ['products', 'list', {page:1, pageSize:20, search:'laptop'}]
+}
+```
+
+#### 5.2.3. useApiDetail - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/useApi.ts
+import { useQuery } from '@tanstack/react-query';
+import type { UseQueryOptions, QueryObserverResult } from '@tanstack/react-query';
+import { createQueryKeys } from './useApi';
+import type { BaseApiService } from '../lib/api/base/BaseApiService';
+
+export interface UseApiDetailConfig<TData, TError = Error> {
+  // REQUIRED
+  apiService: BaseApiService<TData>;
+  entity: string;
+  id: number | string | undefined;
+
+  // OPTIONAL
+  options?: UseQueryOptions<TData, TError>;
+}
+
+/**
+ * Hook để lấy chi tiết item theo ID
+ * 
+ * @example
+ * ```typescript
+ * const { data: product, isLoading } = useApiDetail<ProductEntity>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   id: productId, // undefined → query disabled
+ * });
+ * ```
+ */
+export function useApiDetail<TData, TError = Error>({
+  apiService,
+  entity,
+  id,
+  options,
+}: UseApiDetailConfig<TData, TError>) {
+  const queryKeys = createQueryKeys(entity);
+
+  return useQuery<TData, TError>({
+    // Query key với id
+    queryKey: queryKeys.detail(id!),
+    // Result: ['products', 'detail', 123]
+
+    // Query function
+    queryFn: () => apiService.getById(id!),
+    // Call: GET /api/products/123
+
+    // Chỉ fetch khi có id
+    enabled: !!id && (options?.enabled !== false),
+    // !!id → Convert to boolean
+    // undefined/null/0 → false → Query disabled
+
+    ...options,
+  });
+}
+```
+
+#### 5.2.4. useApiCreate - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/useApi.ts
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationOptions } from '@tanstack/react-query';
+import { createQueryKeys } from './useApi';
+import type { BaseApiService } from '../lib/api/base/BaseApiService';
+
+export interface UseApiCreateConfig<TData, TCreateData, TError = Error> {
+  // REQUIRED
+  apiService: BaseApiService<TData>;
+  entity: string;
+
+  // OPTIONAL
+  options?: UseMutationOptions<TData, TError, TCreateData>;
+}
+
+/**
+ * Hook để tạo mới item
+ * 
+ * @example
+ * ```typescript
+ * const createProduct = useApiCreate<ProductEntity, CreateProductRequest>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ * });
+ * 
+ * createProduct.mutate({ productName: 'New Product', price: 100 });
+ * ```
+ */
+export function useApiCreate<TData, TCreateData, TError = Error>({
+  apiService,
+  entity,
+  options,
+}: UseApiCreateConfig<TData, TCreateData, TError>) {
+  const queryClient = useQueryClient();
+  const queryKeys = createQueryKeys(entity);
+
+  return useMutation<TData, TError, TCreateData>({
+    // Mutation function
+    mutationFn: (data: TCreateData) => apiService.create(data),
+    // Call: POST /api/products với body = data
+
+    // Auto invalidate list queries on success
+    onSuccess: (data, variables, context) => {
+      // Invalidate all list queries
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.lists(),
+        // Matches: ['products', 'list', ...]
+      });
+
+      // Call user's onSuccess
+      options?.onSuccess?.(data, variables, context);
+    },
+
+    ...options,
+  });
+}
+```
+
+#### 5.2.5. useApiUpdate - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/useApi.ts
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationOptions } from '@tanstack/react-query';
+import { createQueryKeys } from './useApi';
+import type { BaseApiService } from '../lib/api/base/BaseApiService';
+
+export interface UseApiUpdateConfig<TData, TUpdateData, TError = Error> {
+  // REQUIRED
+  apiService: BaseApiService<TData>;
+  entity: string;
+
+  // OPTIONAL
+  options?: UseMutationOptions<TData, TError, { id: number | string; data: TUpdateData }>;
+}
+
+/**
+ * Hook để cập nhật toàn bộ item (PUT)
+ * 
+ * @example
+ * ```typescript
+ * const updateProduct = useApiUpdate<ProductEntity, UpdateProductRequest>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ * });
+ * 
+ * updateProduct.mutate({ id: 123, data: { productName: 'Updated', price: 200 } });
+ * ```
+ */
+export function useApiUpdate<TData, TUpdateData, TError = Error>({
+  apiService,
+  entity,
+  options,
+}: UseApiUpdateConfig<TData, TUpdateData, TError>) {
+  const queryClient = useQueryClient();
+  const queryKeys = createQueryKeys(entity);
+
+  return useMutation<TData, TError, { id: number | string; data: TUpdateData }>({
+    mutationFn: ({ id, data }) => apiService.update(id, data),
+    // Call: PUT /api/products/123
+
+    onSuccess: (data, variables, context) => {
+      // Invalidate detail query
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.detail(variables.id),
+      });
+
+      // Invalidate all list queries
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.lists(),
+      });
+
+      options?.onSuccess?.(data, variables, context);
+    },
+
+    ...options,
+  });
+}
+```
+
+#### 5.2.6. useApiPatch - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/useApi.ts
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationOptions } from '@tanstack/react-query';
+import { createQueryKeys } from './useApi';
+import type { BaseApiService } from '../lib/api/base/BaseApiService';
+
+export interface UseApiPatchConfig<TData, TPatchData, TError = Error> {
+  // REQUIRED
+  apiService: BaseApiService<TData>;
+  entity: string;
+
+  // OPTIONAL
+  options?: UseMutationOptions<TData, TError, { id: number | string; data: Partial<TPatchData> }>;
+}
+
+/**
+ * Hook để cập nhật một phần item (PATCH)
+ * 
+ * @example
+ * ```typescript
+ * const patchProduct = useApiPatch<ProductEntity, { isActive: boolean }>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ * });
+ * 
+ * patchProduct.mutate({ id: 123, data: { isActive: true } });
+ * ```
+ */
+export function useApiPatch<TData, TPatchData, TError = Error>({
+  apiService,
+  entity,
+  options,
+}: UseApiPatchConfig<TData, TPatchData, TError>) {
+  const queryClient = useQueryClient();
+  const queryKeys = createQueryKeys(entity);
+
+  return useMutation<TData, TError, { id: number | string; data: Partial<TPatchData> }>({
+    mutationFn: ({ id, data }) => apiService.patch(id, data),
+    // Call: PATCH /api/products/123
+
+    onSuccess: (data, variables, context) => {
+      // Same invalidation như useApiUpdate
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.detail(variables.id),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.lists(),
+      });
+
+      options?.onSuccess?.(data, variables, context);
+    },
+
+    ...options,
+  });
+}
+```
+
+#### 5.2.7. useApiDelete - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/useApi.ts
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationOptions } from '@tanstack/react-query';
+import { createQueryKeys } from './useApi';
+import type { BaseApiService } from '../lib/api/base/BaseApiService';
+
+export interface UseApiDeleteConfig<TError = Error> {
+  // REQUIRED
+  apiService: BaseApiService<any>;
+  entity: string;
+
+  // OPTIONAL
+  options?: UseMutationOptions<void, TError, number | string>;
+}
+
+/**
+ * Hook để xóa item
+ * 
+ * @example
+ * ```typescript
+ * const deleteProduct = useApiDelete({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ * });
+ * 
+ * deleteProduct.mutate(123);
+ * ```
+ */
+export function useApiDelete<TError = Error>({
+  apiService,
+  entity,
+  options,
+}: UseApiDeleteConfig<TError>) {
+  const queryClient = useQueryClient();
+  const queryKeys = createQueryKeys(entity);
+
+  return useMutation<void, TError, number | string>({
+    mutationFn: (id) => apiService.delete(id),
+    // Call: DELETE /api/products/123
+
+    onSuccess: (data, id, context) => {
+      // Remove detail cache
+      queryClient.removeQueries({
+        queryKey: queryKeys.detail(id),
+      });
+
+      // Invalidate list queries
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.lists(),
+      });
+
+      options?.onSuccess?.(data, id, context);
+    },
+
+    ...options,
+  });
+}
+```
+
+#### 5.2.8. useApiCustomQuery - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/useApi.ts
+import { useQuery } from '@tanstack/react-query';
+import type { UseQueryOptions } from '@tanstack/react-query';
+import { createQueryKeys } from './useApi';
+import type { BaseApiService } from '../lib/api/base/BaseApiService';
+
+export interface UseApiCustomQueryConfig<TData, TError = Error> {
+  // REQUIRED
+  apiService: BaseApiService<any>;
+  entity: string;
+  queryKey: string | (string | number | object)[];
+  queryFn: () => Promise<TData>;
+
+  // OPTIONAL
+  options?: UseQueryOptions<TData, TError>;
+}
+
+/**
+ * Hook để tạo query tùy chỉnh cho các endpoint đặc biệt
+ * 
+ * @example
+ * ```typescript
+ * const { data: stats } = useApiCustomQuery<StatsData>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   queryKey: ['stats', { year: 2024 }],
+ *   queryFn: () => productApiService.custom('GET', '/stats', { year: 2024 }),
+ * });
+ * ```
+ */
+export function useApiCustomQuery<TData, TError = Error>({
+  apiService,
+  entity,
+  queryKey,
+  queryFn,
+  options,
+}: UseApiCustomQueryConfig<TData, TError>) {
+  const queryKeys = createQueryKeys(entity);
+
+  // Build full query key
+  const fullQueryKey = Array.isArray(queryKey)
+    ? [entity, ...queryKey]
+    : [entity, queryKey];
+
+  return useQuery<TData, TError>({
+    queryKey: fullQueryKey,
+    queryFn,
+    ...options,
+  });
+}
+```
+
+#### 5.2.9. useApiCustomMutation - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/useApi.ts
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationOptions } from '@tanstack/react-query';
+import { createQueryKeys } from './useApi';
+import type { BaseApiService } from '../lib/api/base/BaseApiService';
+
+export interface UseApiCustomMutationConfig<TData, TVariables, TError = Error> {
+  // REQUIRED
+  apiService: BaseApiService<any>;
+  entity: string;
+  mutationFn: (variables: TVariables) => Promise<TData>;
+
+  // OPTIONAL
+  invalidateQueries?: string[];
+  options?: UseMutationOptions<TData, TError, TVariables>;
+}
+
+/**
+ * Hook để tạo mutation tùy chỉnh cho các endpoint đặc biệt
+ * 
+ * @example
+ * ```typescript
+ * const bulkUpdate = useApiCustomMutation<ProductEntity[], { ids: number[]; data: Partial<ProductEntity> }>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   mutationFn: (vars) => productApiService.custom('POST', '/bulk-update', vars),
+ *   invalidateQueries: ['list'],
+ * });
+ * ```
+ */
+export function useApiCustomMutation<TData, TVariables, TError = Error>({
+  apiService,
+  entity,
+  mutationFn,
+  invalidateQueries = [],
+  options,
+}: UseApiCustomMutationConfig<TData, TVariables, TError>) {
+  const queryClient = useQueryClient();
+  const queryKeys = createQueryKeys(entity);
+
+  return useMutation<TData, TError, TVariables>({
+    mutationFn,
+
+    onSuccess: (data, variables, context) => {
+      // Auto invalidate specified queries
+      invalidateQueries.forEach((key) => {
+        queryClient.invalidateQueries({
+          queryKey: [entity, key],
+        });
+      });
+
+      options?.onSuccess?.(data, variables, context);
+    },
+
+    ...options,
+  });
+}
+```
+
+#### 5.2.10. usePaginationWithRouter - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/usePaginationWithRouter.ts
+import { useNavigate } from '@tanstack/react-router';
+import { useMemo } from 'react';
+import { useApiPaginated } from './useApi';
+import type { BaseApiService, QueryParams } from '../lib/api/base/BaseApiService';
+import type { PagedRequest } from '../lib/axios';
+
+export interface UsePaginationWithRouterConfig<TData> {
+  apiService: BaseApiService<TData>;
+  entity: string;
+  routeApi: any; // TanStack Router route API
+  additionalParams?: QueryParams;
+}
+
+/**
+ * Hook quản lý pagination với URL sync
+ * Pagination state được lưu trong URL query params
+ *
+ * @example
+ * ```typescript
+ * const routeApi = getRouteApi('/admin/products');
+ * const pagination = usePaginationWithRouter({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   routeApi,
+ * });
+ * ```
+ */
+export function usePaginationWithRouter<TData = any>({
+  apiService,
+  entity,
+  routeApi,
+  additionalParams = {},
+}: UsePaginationWithRouterConfig<TData>) {
+  const navigate = useNavigate();
+
+  // Lấy search params từ URL
+  const search = routeApi.useSearch();
+
+  // Build params từ URL - Spread tất cả search params để lấy filters đặc biệt
+  const params: PagedRequest & QueryParams = useMemo(() => {
+    // Tách pagination params và filters từ search
+    const {
+      page,
+      pageSize,
+      search: searchText,
+      sortBy,
+      sortDesc,
+      ...filters // Tất cả params còn lại là filters (categoryId, supplierId, minPrice, etc.)
+    } = search;
+
+    return {
+      page: page || 1,
+      pageSize: pageSize || 20,
+      search: searchText || undefined,
+      sortBy: sortBy || 'id',
+      sortDesc: sortDesc !== false, // Default true
+      ...filters, // ✅ Spread filters từ URL (categoryId, supplierId, minPrice, maxPrice, etc.)
+      ...additionalParams, // Static params (override filters nếu cần)
+    };
+  }, [search, additionalParams]);
+
+  // Fetch data
+  const query = useApiPaginated<TData>({
+    apiService,
+    entity,
+    params,
+    options: {
+      staleTime: 1000 * 60 * 5,
+      placeholderData: (previousData) => previousData,
+    },
+  });
+
+  // Update URL params - Generic function để update bất kỳ params nào
+  const updateUrlParams = (newParams: Partial<PagedRequest & QueryParams>) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        ...newParams,
+      }),
+    });
+  };
+
+  // Helper functions
+  const handlePageChange = (newPage: number, newPageSize?: number) => {
+    const updates: Partial<PagedRequest> = { page: newPage };
+    if (newPageSize && newPageSize !== params.pageSize) {
+      updates.pageSize = newPageSize;
+      updates.page = 1;
+    }
+    updateUrlParams(updates);
+  };
+
+  const handleSearch = (searchText: string) => {
+    updateUrlParams({
+      search: searchText || undefined,
+      page: 1,
+    });
+  };
+
+  const handleSort = (field: string, descending: boolean) => {
+    updateUrlParams({
+      sortBy: field,
+      sortDesc: descending,
+      page: 1,
+    });
+  };
+
+  // Handler để update filters đặc biệt
+  const handleFilterChange = (newFilters: QueryParams) => {
+    updateUrlParams({
+      ...newFilters,
+      page: 1, // Reset về page 1 khi filter thay đổi
+    });
+  };
+
+  // Clear specific filters
+  const clearFilters = (filterKeys?: string[]) => {
+    if (filterKeys && filterKeys.length > 0) {
+      // Clear specific filters
+      const clearedFilters: Record<string, undefined> = {};
+      filterKeys.forEach(key => {
+        clearedFilters[key] = undefined;
+      });
+      updateUrlParams({
+        ...clearedFilters,
+        page: 1,
+      });
+    } else {
+      // Clear all filters (giữ pagination và sort)
+      const { page, pageSize, search, sortBy, sortDesc, ...filters } = search;
+      const clearedFilters: Record<string, undefined> = {};
+      Object.keys(filters).forEach(key => {
+        clearedFilters[key] = undefined;
+      });
+      updateUrlParams({
+        ...clearedFilters,
+        page: 1,
+      });
+    }
+  };
+
+  const resetPagination = () => {
+    navigate({
+      search: {
+        page: 1,
+        pageSize: 20,
+      },
+    });
+  };
+
+  // Extract filters từ params (loại bỏ pagination và sort params)
+  const filters = useMemo(() => {
+    const { page, pageSize, search, sortBy, sortDesc, ...rest } = params;
+    return rest;
+  }, [params]);
+
+  // Count active filters
+  const activeFiltersCount = Object.values(filters).filter(
+    v => v !== undefined && v !== null && v !== ''
+  ).length;
+
+  return {
+    ...query,
+    params,
+    filters, // Expose filters để component có thể sử dụng
+    totalCount: query.data?.totalCount || 0,
+    totalPages: query.data?.totalPages || 0,
+    hasPrevious: query.data?.hasPrevious || false,
+    hasNext: query.data?.hasNext || false,
+    items: query.data?.items || [],
+    activeFiltersCount, // Expose count để hiển thị badge
+    handlePageChange,
+    handleSearch,
+    handleSort,
+    handleFilterChange, // Handler để update filters
+    clearFilters, // Clear filters
+    resetPagination,
+  };
+}
+```
+
+#### 5.2.11. usePaginationWithPrefetch - Code Định nghĩa
+
+```typescript
+// shiny-carnival/frontend/src/hooks/usePaginationWithPrefetch.ts
+import { useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApiPaginated } from './useApi';
+import { createQueryKeys } from './useApi';
+import type { BaseApiService } from '../lib/api/base/BaseApiService';
+import type { PagedRequest, PagedList } from '../lib/axios';
+
+export interface PrefetchOptions {
+  // OPTIONAL - Prefetch behavior configuration
+  enabled?: boolean;
+  // - Mô tả: Enable/disable prefetch functionality
+  // - Type: boolean
+  // - Default: true
+
+  staleTime?: number;
+  // - Mô tả: Cache time cho prefetched data (milliseconds)
+  // - Type: number
+  // - Default: 1000 * 60 * 5 (5 minutes)
+
+  debounceMs?: number;
+  // - Mô tả: Debounce time cho prefetch calls (milliseconds)
+  // - Type: number
+  // - Default: undefined (no debounce)
+  // - Use case: Tránh prefetch quá nhiều khi user hover nhanh
+
+  onPrefetchSuccess?: () => void;
+  // - Mô tả: Callback khi prefetch thành công
+  // - Type: () => void
+  // - Default: undefined
+
+  onPrefetchError?: (error: Error) => void;
+  // - Mô tả: Callback khi prefetch thất bại
+  // - Type: (error: Error) => void
+  // - Default: undefined
+  // - Note: Error được log nhưng không throw để không ảnh hưởng UX
+}
+
+export interface UsePaginationWithPrefetchConfig<TData> {
+  // REQUIRED
+  apiService: BaseApiService<TData>;
+  // - Mô tả: Instance của ApiService
+  // - Type: BaseApiService<TData>
+
+  entity: string;
+  // - Mô tả: Entity name cho query keys
+  // - Type: string
+
+  // OPTIONAL
+  params?: PagedRequest;
+  // - Mô tả: Pagination + filter parameters
+  // - Type: PagedRequest
+  // - Default: undefined
+  // - Note: sortBy không có default, phải specify trong params nếu cần
+
+  additionalParams?: Record<string, any>;
+  // - Mô tả: Additional static params (filters, etc.)
+  // - Type: Record<string, any>
+  // - Default: undefined
+
+  options?: Parameters<typeof useApiPaginated<TData>>[0]['options'];
+  // - Mô tả: TanStack Query options cho main query
+  // - Default: undefined
+
+  prefetchOptions?: PrefetchOptions;
+  // - Mô tả: Configuration cho prefetch behavior
+  // - Type: PrefetchOptions
+  // - Default: { enabled: true, staleTime: 5 minutes }
+}
+
+/**
+ * Hook với prefetching cho next/previous pages
+ * Tự động prefetch trang tiếp theo để cải thiện UX
+ * 
+ * @example
+ * ```typescript
+ * // Basic usage
+ * const {
+ *   data,
+ *   items,
+ *   isLoading,
+ *   prefetchNextPage,
+ *   prefetchPreviousPage,
+ *   prefetchDetail,
+ * } = usePaginationWithPrefetch<ProductEntity>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   params: { page: 1, pageSize: 20 },
+ * });
+ * 
+ * // Advanced usage với custom prefetch options
+ * const pagination = usePaginationWithPrefetch<OrderEntity>({
+ *   apiService: orderApiService,
+ *   entity: 'orders',
+ *   params: { page: 1, pageSize: 20, sortBy: 'createdAt' },
+ *   prefetchOptions: {
+ *     enabled: true,
+ *     staleTime: 1000 * 60 * 2, // 2 minutes cho real-time data
+ *     debounceMs: 300, // Debounce 300ms
+ *     onPrefetchSuccess: () => console.log('Prefetch success'),
+ *     onPrefetchError: (error) => console.error('Prefetch failed', error),
+ *   },
+ * });
+ * 
+ * // Prefetch khi hover vào nút next
+ * <Button onMouseEnter={() => prefetchNextPage()}>Next</Button>
+ * ```
+ */
+export function usePaginationWithPrefetch<TData = any>(
+  config: UsePaginationWithPrefetchConfig<TData>
+) {
+  const queryClient = useQueryClient();
+  
+  // Prefetch options với defaults
+  const prefetchOptions: Required<Omit<PrefetchOptions, 'onPrefetchSuccess' | 'onPrefetchError' | 'debounceMs'>> & Pick<PrefetchOptions, 'onPrefetchSuccess' | 'onPrefetchError' | 'debounceMs'> = {
+    enabled: config.prefetchOptions?.enabled ?? true,
+    staleTime: config.prefetchOptions?.staleTime ?? 1000 * 60 * 5, // Default 5 minutes
+    debounceMs: config.prefetchOptions?.debounceMs,
+    onPrefetchSuccess: config.prefetchOptions?.onPrefetchSuccess,
+    onPrefetchError: config.prefetchOptions?.onPrefetchError,
+  };
+
+  // Sử dụng useApiPaginated để lấy data và pagination state
+  const paginationQuery = useApiPaginated<TData>({
+    apiService: config.apiService,
+    entity: config.entity,
+    params: config.params,
+    options: config.options,
+  });
+
+  // Lấy query keys factory
+  const queryKeys = createQueryKeys(config.entity);
+
+  // Extract pagination data
+  const data = paginationQuery.data;
+  const page = data?.page || config.params?.page || 1;
+  const pageSize = data?.pageSize || config.params?.pageSize || 20;
+  const search = config.params?.search;
+  // ✅ FIXED: Không hardcode default sortBy, dùng từ params hoặc undefined
+  const sortBy = config.params?.sortBy;
+  const sortDesc = config.params?.sortDesc !== false; // Default true nếu không specify
+  const hasNext = data?.hasNext || false;
+  const hasPrevious = data?.hasPrevious || false;
+
+  // Debounce timers (dùng useRef để persist across renders)
+  const nextPageDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevPageDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const detailDebounceTimersRef = useRef<Map<number | string, NodeJS.Timeout>>(new Map());
+
+  // Helper function để prefetch với error handling
+  const prefetchWithErrorHandling = async (
+    queryKey: unknown[],
+    queryFn: () => Promise<any>,
+    onSuccess?: () => void,
+    onError?: (error: Error) => void
+  ) => {
+    try {
+      await queryClient.prefetchQuery({
+        queryKey,
+        queryFn,
+        staleTime: prefetchOptions.staleTime,
+      });
+      onSuccess?.();
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      // Log error nhưng không throw để không ảnh hưởng UX
+      console.warn('[usePaginationWithPrefetch] Prefetch failed:', err);
+      onError?.(err);
+    }
+  };
+
+  // Prefetch next page
+  const prefetchNextPage = () => {
+    if (!prefetchOptions.enabled || !hasNext) return;
+
+    const executePrefetch = () => {
+      const nextParams: PagedRequest = {
+        page: page + 1,
+        pageSize,
+        ...(search && { search }),
+        ...(sortBy && { sortBy }),
+        sortDesc,
+        ...config.additionalParams,
+      };
+
+      prefetchWithErrorHandling(
+        queryKeys.list(nextParams),
+        () => config.apiService.getPaginated(nextParams),
+        prefetchOptions.onPrefetchSuccess,
+        prefetchOptions.onPrefetchError
+      );
+    };
+
+    // Debounce nếu có
+    if (prefetchOptions.debounceMs) {
+      if (nextPageDebounceTimerRef.current) {
+        clearTimeout(nextPageDebounceTimerRef.current);
+      }
+      nextPageDebounceTimerRef.current = setTimeout(executePrefetch, prefetchOptions.debounceMs);
+    } else {
+      executePrefetch();
+    }
+  };
+
+  // Prefetch previous page
+  const prefetchPreviousPage = () => {
+    if (!prefetchOptions.enabled || !hasPrevious) return;
+
+    const executePrefetch = () => {
+      const prevParams: PagedRequest = {
+        page: page - 1,
+        pageSize,
+        ...(search && { search }),
+        ...(sortBy && { sortBy }),
+        sortDesc,
+        ...config.additionalParams,
+      };
+
+      prefetchWithErrorHandling(
+        queryKeys.list(prevParams),
+        () => config.apiService.getPaginated(prevParams),
+        prefetchOptions.onPrefetchSuccess,
+        prefetchOptions.onPrefetchError
+      );
+    };
+
+    // Debounce nếu có
+    if (prefetchOptions.debounceMs) {
+      if (prevPageDebounceTimerRef.current) {
+        clearTimeout(prevPageDebounceTimerRef.current);
+      }
+      prevPageDebounceTimerRef.current = setTimeout(executePrefetch, prefetchOptions.debounceMs);
+    } else {
+      executePrefetch();
+    }
+  };
+
+  // Prefetch detail khi hover
+  const prefetchDetail = (id: number | string) => {
+    if (!prefetchOptions.enabled) return;
+
+    const executePrefetch = () => {
+      prefetchWithErrorHandling(
+        queryKeys.detail(id),
+        () => config.apiService.getById(id),
+        prefetchOptions.onPrefetchSuccess,
+        prefetchOptions.onPrefetchError
+      );
+    };
+
+    // Debounce nếu có (per-item debounce)
+    if (prefetchOptions.debounceMs) {
+      const existingTimer = detailDebounceTimersRef.current.get(id);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      const timer = setTimeout(() => {
+        executePrefetch();
+        detailDebounceTimersRef.current.delete(id);
+      }, prefetchOptions.debounceMs);
+      detailDebounceTimersRef.current.set(id, timer);
+    } else {
+      executePrefetch();
+    }
+  };
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      if (nextPageDebounceTimerRef.current) {
+        clearTimeout(nextPageDebounceTimerRef.current);
+      }
+      if (prevPageDebounceTimerRef.current) {
+        clearTimeout(prevPageDebounceTimerRef.current);
+      }
+      detailDebounceTimersRef.current.forEach(timer => clearTimeout(timer));
+      detailDebounceTimersRef.current.clear();
+    };
+  }, []);
+
+  // No-op functions nếu prefetch disabled
+  const noop = () => {};
+
+  return {
+    // Spread tất cả properties từ useApiPaginated
+    ...paginationQuery,
+    
+    // Extract items từ PagedList
+    items: data?.items || [],
+    totalCount: data?.totalCount || 0,
+    totalPages: data?.totalPages || 0,
+    hasNext,
+    hasPrevious,
+    page,
+    pageSize,
+    
+    // Prefetch functions (no-op nếu disabled)
+    prefetchNextPage: prefetchOptions.enabled ? prefetchNextPage : noop,
+    prefetchPreviousPage: prefetchOptions.enabled ? prefetchPreviousPage : noop,
+    prefetchDetail: prefetchOptions.enabled ? prefetchDetail : noop,
+  };
+}
+```
+
+---
+
+## 6. Code Examples Áp dụng vào Components
+
+Phần này chứa các ví dụ cụ thể về cách sử dụng từng hook trong các React components thực tế.
+
+#### 6.1. useApiList - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+// 1. Simple list - Load all
+const { data: products } = useApiList({
+  apiService: productApiService,
+  entity: 'products',
+});
+
+// 2. With filters
+const { data: products } = useApiList({
+  apiService: productApiService,
+  entity: 'products',
+  params: { categoryId: 5 },
+});
+
+// 3. With custom options
+const { data: products, refetch } = useApiList({
+  apiService: productApiService,
+  entity: 'products',
+  options: {
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    enabled: isAuthenticated,  // Only fetch when authenticated
+  },
+});
+
+// 4. Dependent query
+const { data: category } = useApiDetail({ ... });
+const { data: products } = useApiList({
+  apiService: productApiService,
+  entity: 'products',
+  params: { categoryId: category?.id },
+  options: {
+    enabled: !!category?.id, // Only fetch when category loaded
+  },
+});
+```
+
+**📌 Component Example:**
+
+```typescript
+// Component sử dụng useApiList
+import { useApiList } from '@/hooks/useApi';
+import { categoryApiService } from '@/features/categories/api/CategoryApiService';
+import type { CategoryEntity } from '@/features/categories/types/entity';
+
+function CategorySelect() {
+  const { data: categories, isLoading, isError } = useApiList<CategoryEntity>({
+    apiService: categoryApiService,
+    entity: 'categories',
+  });
+
+  if (isLoading) return <Spin />;
+  if (isError) return <Alert message="Failed to load categories" type="error" />;
+
+  return (
+    <Select placeholder="Select category">
+      {categories?.map(category => (
+        <Select.Option key={category.id} value={category.id}>
+          {category.categoryName}
+        </Select.Option>
+      ))}
+    </Select>
+  );
+}
+```
+
+#### 6.2. useApiPaginated - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+// 1. Basic pagination
+const { data } = useApiPaginated({
+  apiService: productApiService,
+  entity: 'products',
+  params: { page: 1, pageSize: 20 },
+});
+// data.items: ProductEntity[]
+// data.totalCount: 150
+// data.totalPages: 8
+
+// 2. With search
+const { data } = useApiPaginated({
+  apiService: productApiService,
+  entity: 'products',
+  params: {
+    page: 1,
+    pageSize: 20,
+    search: 'laptop',
+  },
+});
+
+// 3. With sort
+const { data } = useApiPaginated({
+  apiService: productApiService,
+  entity: 'products',
+  params: {
+    page: 1,
+    pageSize: 20,
+    sortBy: 'price',
+    sortDesc: false, // Ascending
+  },
+});
+
+// 4. With filters
+const { data } = useApiPaginated({
+  apiService: productApiService,
+  entity: 'products',
+  params: {
+    page: 1,
+    pageSize: 20,
+    categoryId: 5,
+    minPrice: 100,
+    maxPrice: 1000,
+  },
+});
+
+// 5. Keep previous data while fetching
+const { data, isFetching, isPlaceholderData } = useApiPaginated({
+  apiService: productApiService,
+  entity: 'products',
+  params: { page, pageSize },
+  options: {
+    placeholderData: (previousData) => previousData,
+  },
+});
+// isPlaceholderData = true → Showing old page while fetching new
+// isFetching = true → Show subtle loading indicator
+```
+
+**📌 Component Example:**
+
+```typescript
+// Component sử dụng useApiPaginated
+import { useState } from 'react';
+import { Table, Pagination, Input } from 'antd';
+import { useApiPaginated } from '@/hooks/useApi';
+import { productApiService } from '@/features/products/api/ProductApiService';
+import type { ProductEntity } from '@/features/products/types/entity';
+
+function ProductTable() {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [search, setSearch] = useState('');
+
+  const { data, isLoading, isFetching } = useApiPaginated<ProductEntity>({
+    apiService: productApiService,
+    entity: 'products',
+    params: {
+      page,
+      pageSize,
+      search: search || undefined,
+      sortBy: 'id',
+      sortDesc: true,
+    },
+  });
+
+  return (
+    <div>
+      <Input.Search
+        placeholder="Search products"
+        onSearch={setSearch}
+        style={{ marginBottom: 16 }}
+      />
+      <Table
+        dataSource={data?.items || []}
+        loading={isLoading || isFetching}
+        pagination={false}
+        columns={[
+          { title: 'ID', dataIndex: 'id' },
+          { title: 'Product Name', dataIndex: 'productName' },
+          { title: 'Price', dataIndex: 'price' },
+        ]}
+      />
+      <Pagination
+        current={page}
+        pageSize={pageSize}
+        total={data?.totalCount || 0}
+        onChange={(newPage, newPageSize) => {
+          setPage(newPage);
+          setPageSize(newPageSize || 20);
+        }}
+      />
+    </div>
+  );
+}
+```
+
+#### 6.3. useApiDetail - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+// 1. Basic detail fetch
+const { data: product, isLoading } = useApiDetail({
+  apiService: productApiService,
+  entity: 'products',
+  id: 123,
+});
+
+// 2. Dependent query (id từ route params)
+const { id } = useParams();
+const { data: product } = useApiDetail({
+  apiService: productApiService,
+  entity: 'products',
+  id: id ? Number(id) : undefined,
+});
+// id = undefined → Query disabled
+
+// 3. Conditional fetch
+const [selectedId, setSelectedId] = useState<number>();
+const { data: product } = useApiDetail({
+  apiService: productApiService,
+  entity: 'products',
+  id: selectedId,
+  options: {
+    enabled: !!selectedId, // Chỉ fetch khi có selectedId
+  },
+});
+
+// 4. With custom staleTime
+const { data: product } = useApiDetail({
+  apiService: productApiService,
+  entity: 'products',
+  id: 123,
+  options: {
+    staleTime: 1000 * 60 * 10, // 10 minutes
+    // Data sẽ fresh trong 10 phút
+  },
+});
+
+// 5. Prefetch detail
+const queryClient = useQueryClient();
+const prefetchProduct = (id: number) => {
+  queryClient.prefetchQuery({
+    queryKey: ['products', 'detail', id],
+    queryFn: () => productApiService.getById(id),
+  });
+};
+
+// Hover to prefetch
+<tr onMouseEnter={() => prefetchProduct(product.id)}>
+```
+
+**📌 Component Example:**
+
+```typescript
+// Component sử dụng useApiDetail
+import { useParams } from '@tanstack/react-router';
+import { Spin, Card, Descriptions } from 'antd';
+import { useApiDetail } from '@/hooks/useApi';
+import { productApiService } from '@/features/products/api/ProductApiService';
+import type { ProductEntity } from '@/features/products/types/entity';
+
+function ProductDetailPage() {
+  const { id } = useParams({ from: '/products/$id' });
+  const { data: product, isLoading, isError } = useApiDetail<ProductEntity>({
+    apiService: productApiService,
+    entity: 'products',
+    id: id ? Number(id) : undefined,
+  });
+
+  if (isLoading) return <Spin />;
+  if (isError || !product) return <div>Product not found</div>;
+
+  return (
+    <Card>
+      <Descriptions title="Product Details">
+        <Descriptions.Item label="ID">{product.id}</Descriptions.Item>
+        <Descriptions.Item label="Product Name">{product.productName}</Descriptions.Item>
+        <Descriptions.Item label="Price">{product.price}</Descriptions.Item>
+        <Descriptions.Item label="Stock">{product.stock}</Descriptions.Item>
+      </Descriptions>
+    </Card>
+  );
+}
+```
+
+#### 6.4. useApiCreate - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+// 1. Basic create
+const createProduct = useApiCreate({
+  apiService: productApiService,
+  entity: 'products',
+});
+
+const handleSubmit = (formData: CreateProductRequest) => {
+  createProduct.mutate(formData);
+};
+
+// 2. With callbacks
+const createProduct = useApiCreate({
+  apiService: productApiService,
+  entity: 'products',
+  options: {
+    onSuccess: (data) => {
+      message.success('Product created!');
+      navigate(`/products/${data.id}`);
+    },
+    onError: (error) => {
+      message.error(error.message);
+    },
+  },
+});
+
+// 3. With async/await
+const createProduct = useApiCreate({
+  apiService: productApiService,
+  entity: 'products',
+});
+
+const handleSubmit = async (formData: CreateProductRequest) => {
+  try {
+    const result = await createProduct.mutateAsync(formData);
+    console.log('Created:', result);
+    navigate(`/products/${result.id}`);
+  } catch (error) {
+    console.error('Failed:', error);
+  }
+};
+```
+
+**📌 Component Example:**
+
+```typescript
+// Component sử dụng useApiCreate
+import { Form, Input, Button, message } from 'antd';
+import { useApiCreate } from '@/hooks/useApi';
+import { productApiService } from '@/features/products/api/ProductApiService';
+import type { ProductEntity } from '@/features/products/types/entity';
+import type { CreateProductRequest } from '@/features/products/types/api';
+
+function CreateProductForm() {
+  const [form] = Form.useForm();
+  const navigate = useNavigate();
+
+  const createProduct = useApiCreate<ProductEntity, CreateProductRequest>({
+    apiService: productApiService,
+    entity: 'products',
+    options: {
+      onSuccess: (data) => {
+        message.success('Product created successfully!');
+        navigate(`/products/${data.id}`);
+      },
+      onError: (error) => {
+        message.error(`Failed to create product: ${error.message}`);
+      },
+    },
+  });
+
+  const onFinish = (values: CreateProductRequest) => {
+    createProduct.mutate(values);
+  };
+
+  return (
+    <Form form={form} onFinish={onFinish} layout="vertical">
+      <Form.Item name="productName" label="Product Name" rules={[{ required: true }]}>
+        <Input />
+      </Form.Item>
+      <Form.Item name="price" label="Price" rules={[{ required: true }]}>
+        <Input type="number" />
+      </Form.Item>
+      <Form.Item>
+        <Button type="primary" htmlType="submit" loading={createProduct.isPending}>
+          Create Product
+        </Button>
+      </Form.Item>
+    </Form>
+  );
+}
+```
+
+#### 6.5. useApiUpdate - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+// 1. Basic update
+const updateProduct = useApiUpdate({
+  apiService: productApiService,
+  entity: 'products',
+});
+
+const handleSave = (id: number, formData: UpdateProductRequest) => {
+  updateProduct.mutate({ id, data: formData });
+};
+
+// 2. With optimistic update
+const updateProduct = useApiUpdate({
+  apiService: productApiService,
+  entity: 'products',
+  options: {
+    onMutate: async ({ id, data }) => {
+      // Cancel queries
+      await queryClient.cancelQueries({ queryKey: ['products', 'detail', id] });
+
+      // Snapshot
+      const previous = queryClient.getQueryData(['products', 'detail', id]);
+
+      // Optimistic update detail
+      queryClient.setQueryData(['products', 'detail', id], (old: any) => ({
+        ...old,
+        ...data,
+      }));
+
+      return { previous };
+    },
+    onError: (err, { id }, context) => {
+      // Rollback
+      queryClient.setQueryData(['products', 'detail', id], context?.previous);
+    },
+  },
+});
+```
+
+**📌 Component Example:**
+
+```typescript
+// Component sử dụng useApiUpdate
+import { useParams } from '@tanstack/react-router';
+import { Form, Input, Button, message } from 'antd';
+import { useApiDetail, useApiUpdate } from '@/hooks/useApi';
+import { productApiService } from '@/features/products/api/ProductApiService';
+import type { ProductEntity } from '@/features/products/types/entity';
+import type { UpdateProductRequest } from '@/features/products/types/api';
+
+function EditProductPage() {
+  const { id } = useParams({ from: '/products/$id/edit' });
+  const [form] = Form.useForm();
+
+  const { data: product, isLoading } = useApiDetail<ProductEntity>({
+    apiService: productApiService,
+    entity: 'products',
+    id: id ? Number(id) : undefined,
+  });
+
+  const updateProduct = useApiUpdate<ProductEntity, UpdateProductRequest>({
+    apiService: productApiService,
+    entity: 'products',
+    options: {
+      onSuccess: () => {
+        message.success('Product updated successfully!');
+      },
+    },
+  });
+
+  const onFinish = (values: UpdateProductRequest) => {
+    if (id) {
+      updateProduct.mutate({ id: Number(id), data: values });
+    }
+  };
+
+  if (isLoading) return <Spin />;
+
+  return (
+    <Form form={form} initialValues={product} onFinish={onFinish} layout="vertical">
+      <Form.Item name="productName" label="Product Name">
+        <Input />
+      </Form.Item>
+      <Form.Item name="price" label="Price">
+        <Input type="number" />
+      </Form.Item>
+      <Form.Item>
+        <Button type="primary" htmlType="submit" loading={updateProduct.isPending}>
+          Update Product
+        </Button>
+      </Form.Item>
+    </Form>
+  );
+}
+```
+
+#### 6.6. useApiPatch - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+// 1. Toggle active status
+const patchProduct = useApiPatch({
+  apiService: productApiService,
+  entity: 'products',
+});
+
+const handleToggleActive = (id: number, isActive: boolean) => {
+  patchProduct.mutate({
+    id,
+    data: { isActive }, // Chỉ update 1 field
+  });
+};
+
+// 2. Update price only
+const handleUpdatePrice = (id: number, newPrice: number) => {
+  patchProduct.mutate({
+    id,
+    data: { price: newPrice },
+  });
+};
+
+// 3. Quick actions
+<Switch
+  checked={product.isActive}
+  onChange={(checked) => {
+    patchProduct.mutate({
+      id: product.id,
+      data: { isActive: checked },
+    });
+  }}
+  loading={patchProduct.isPending}
+/>
+```
+
+**📌 Component Example:**
+
+```typescript
+// Component sử dụng useApiPatch
+import { Switch, Button, message } from 'antd';
+import { useApiPatch } from '@/hooks/useApi';
+import { productApiService } from '@/features/products/api/ProductApiService';
+import type { ProductEntity } from '@/features/products/types/entity';
+
+function ProductActions({ product }: { product: ProductEntity }) {
+  const patchProduct = useApiPatch<ProductEntity, { isActive: boolean }>({
+    apiService: productApiService,
+    entity: 'products',
+    options: {
+      onSuccess: () => {
+        message.success('Product updated!');
+      },
+    },
+  });
+
+  const handleToggleActive = (checked: boolean) => {
+    patchProduct.mutate({
+      id: product.id,
+      data: { isActive: checked },
+    });
+  };
+
+  return (
+    <div>
+      <Switch
+        checked={product.isActive}
+        onChange={handleToggleActive}
+        loading={patchProduct.isPending}
+      />
+      <span>Active Status</span>
+    </div>
+  );
+}
+```
+
+#### 6.7. useApiDelete - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+// 1. Basic delete với confirmation
+const deleteProduct = useApiDelete({
+  apiService: productApiService,
+  entity: 'products',
+});
+
+const handleDelete = (id: number) => {
+  Modal.confirm({
+    title: 'Delete Product?',
+    content: 'This action cannot be undone.',
+    onOk: () => {
+      deleteProduct.mutate(id);
+    },
+  });
+};
+
+// 2. With callbacks
+const deleteProduct = useApiDelete({
+  apiService: productApiService,
+  entity: 'products',
+  options: {
+    onSuccess: () => {
+      message.success('Product deleted!');
+      navigate('/products');
+    },
+    onError: (error) => {
+      if (error.message.includes('foreign key')) {
+        message.error('Cannot delete: product has orders');
+      } else {
+        message.error('Delete failed');
+      }
+    },
+  },
+});
+```
+
+**📌 Component Example:**
+
+```typescript
+// Component sử dụng useApiDelete
+import { Popconfirm, Button, message } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
+import { useApiDelete } from '@/hooks/useApi';
+import { productApiService } from '@/features/products/api/ProductApiService';
+
+function DeleteProductButton({ productId }: { productId: number }) {
+  const deleteProduct = useApiDelete({
+    apiService: productApiService,
+    entity: 'products',
+    options: {
+      onSuccess: () => {
+        message.success('Product deleted successfully!');
+      },
+      onError: (error) => {
+        message.error(`Failed to delete: ${error.message}`);
+      },
+    },
+  });
+
+  return (
+    <Popconfirm
+      title="Delete this product?"
+      onConfirm={() => deleteProduct.mutate(productId)}
+      okText="Yes"
+      cancelText="No"
+    >
+      <Button
+        danger
+        loading={deleteProduct.isPending}
+        icon={<DeleteOutlined />}
+      >
+        Delete
+      </Button>
+    </Popconfirm>
+  );
+}
+```
+
+#### 6.8. useApiCustomQuery - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+// 1. Custom endpoint - Statistics
+const { data: stats } = useApiCustomQuery({
+  apiService: productApiService,
+  entity: 'products',
+  queryKey: ['stats', { year: 2024 }],
+  queryFn: () => productApiService.custom('GET', '/stats', { year: 2024 }),
+});
+// Query key: ['products', 'stats', { year: 2024 }]
+// Endpoint: GET /api/products/stats?year=2024
+
+// 2. Custom endpoint - Search suggestions
+const { data: suggestions } = useApiCustomQuery({
+  apiService: productApiService,
+  entity: 'products',
+  queryKey: ['suggestions', searchText],
+  queryFn: () => productApiService.custom('GET', '/suggestions', { q: searchText }),
+  options: {
+    enabled: searchText.length >= 3, // Chỉ fetch khi >= 3 chars
+    staleTime: 1000 * 60, // 1 minute
+  },
+});
+```
+
+**📌 Component Example:**
+
+```typescript
+// Component sử dụng useApiCustomQuery
+import { Card, Statistic, Spin } from 'antd';
+import { useApiCustomQuery } from '@/hooks/useApi';
+import { productApiService } from '@/features/products/api/ProductApiService';
+
+interface StatsData {
+  totalProducts: number;
+  totalRevenue: number;
+  averagePrice: number;
+}
+
+function ProductStats() {
+  const { data: stats, isLoading } = useApiCustomQuery<StatsData>({
+    apiService: productApiService,
+    entity: 'products',
+    queryKey: ['stats', { year: 2024 }],
+    queryFn: () => productApiService.custom('GET', '/stats', { year: 2024 }),
+  });
+
+  if (isLoading) return <Spin />;
+
+  return (
+    <div style={{ display: 'flex', gap: 16 }}>
+      <Card>
+        <Statistic title="Total Products" value={stats?.totalProducts} />
+      </Card>
+      <Card>
+        <Statistic title="Total Revenue" value={stats?.totalRevenue} prefix="$" />
+      </Card>
+      <Card>
+        <Statistic title="Average Price" value={stats?.averagePrice} prefix="$" />
+      </Card>
+    </div>
+  );
+}
+```
+
+#### 6.9. useApiCustomMutation - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+// 1. Bulk update
+const bulkUpdate = useApiCustomMutation({
+  apiService: productApiService,
+  entity: 'products',
+  mutationFn: (data: { ids: number[]; updates: Partial<ProductEntity> }) =>
+    productApiService.custom('POST', '/bulk-update', data),
+  invalidateQueries: ['list'], // Invalidate list after bulk update
+  options: {
+    onSuccess: () => {
+      message.success('Bulk update successful!');
+    },
+  },
+});
+
+// Usage
+bulkUpdate.mutate({
+  ids: [1, 2, 3],
+  updates: { isActive: true },
+});
+
+// 2. Import from file
+const importProducts = useApiCustomMutation({
+  apiService: productApiService,
+  entity: 'products',
+  mutationFn: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return productApiService.custom('POST', '/import', formData);
+  },
+  invalidateQueries: ['list', 'stats'],
+});
+```
+
+**📌 Component Example:**
+
+```typescript
+// Component sử dụng useApiCustomMutation
+import { Upload, Button, message } from 'antd';
+import { UploadOutlined } from '@ant-design/icons';
+import { useApiCustomMutation } from '@/hooks/useApi';
+import { productApiService } from '@/features/products/api/ProductApiService';
+
+function ImportProductsButton() {
+  const importProducts = useApiCustomMutation<any, File>({
+    apiService: productApiService,
+    entity: 'products',
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return productApiService.custom('POST', '/import', formData);
+    },
+    invalidateQueries: ['list'],
+    options: {
+      onSuccess: () => {
+        message.success('Products imported successfully!');
+      },
+      onError: (error) => {
+        message.error(`Import failed: ${error.message}`);
+      },
+    },
+  });
+
+  const handleUpload = (file: File) => {
+    importProducts.mutate(file);
+    return false; // Prevent default upload
+  };
+
+  return (
+    <Upload beforeUpload={handleUpload} showUploadList={false}>
+      <Button
+        icon={<UploadOutlined />}
+        loading={importProducts.isPending}
+      >
+        Import Products
+      </Button>
+    </Upload>
+  );
+}
+```
+
+#### 6.10. usePaginationWithRouter - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+import { getRouteApi } from '@tanstack/react-router';
+import { usePaginationWithRouter } from '@/hooks/usePaginationWithRouter';
+import { productApiService } from '@/features/products/api/ProductApiService';
+
+const routeApi = getRouteApi('/admin/products');
+
+function ProductListPage() {
+  const {
+    items,
+    isLoading,
+    params,
+    totalCount,
+    handlePageChange,
+    handleSearch,
+  } = usePaginationWithRouter({
+    apiService: productApiService,
+    entity: 'products',
+    routeApi,
+  });
+
+  return (
+    <div>
+      <input
+        type="text"
+        defaultValue={params.search}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            handleSearch(e.currentTarget.value);
+          }
+        }}
+      />
+
+      <table>
+        <tbody>
+          {items.map(product => (
+            <tr key={product.id}>
+              <td>{product.productName}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div>
+        <button onClick={() => handlePageChange(params.page - 1)}>
+          Previous
+        </button>
+        <span>Page {params.page}</span>
+        <button onClick={() => handlePageChange(params.page + 1)}>
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+**📌 Advanced Usage với Filters:**
+
+```typescript
+// Component với filters và URL sync
+import { getRouteApi } from '@tanstack/react-router';
+import { Table, Input, Select, Button } from 'antd';
+import { usePaginationWithRouter } from '@/hooks/usePaginationWithRouter';
+import { productApiService } from '@/features/products/api/ProductApiService';
+
+const routeApi = getRouteApi('/admin/products');
+
+function ProductListPageWithFilters() {
+  const {
+    items,
+    isLoading,
+    params,
+    filters,
+    totalCount,
+    handlePageChange,
+    handleSearch,
+    handleSort,
+    handleFilterChange,
+    clearFilters,
+    activeFiltersCount,
+  } = usePaginationWithRouter({
+    apiService: productApiService,
+    entity: 'products',
+    routeApi,
+  });
+
+  return (
+    <div>
+      <Input.Search
+        placeholder="Search products"
+        defaultValue={params.search}
+        onSearch={handleSearch}
+        style={{ marginBottom: 16 }}
+      />
+
+      <Select
+        placeholder="Category"
+        value={filters.categoryId}
+        onChange={(value) => handleFilterChange({ categoryId: value })}
+        style={{ width: 200, marginRight: 8 }}
+      >
+        <Select.Option value={1}>Electronics</Select.Option>
+        <Select.Option value={2}>Clothing</Select.Option>
+      </Select>
+
+      {activeFiltersCount > 0 && (
+        <Button onClick={() => clearFilters()}>
+          Clear Filters ({activeFiltersCount})
+        </Button>
+      )}
+
+      <Table
+        dataSource={items}
+        loading={isLoading}
+        columns={[
+          {
+            title: 'Name',
+            dataIndex: 'productName',
+            sorter: true,
+            onHeaderCell: () => ({
+              onClick: () => handleSort('productName', !params.sortDesc),
+            }),
+          },
+          { title: 'Price', dataIndex: 'price' },
+        ]}
+        pagination={{
+          current: params.page,
+          pageSize: params.pageSize,
+          total: totalCount,
+          onChange: handlePageChange,
+        }}
+      />
+    </div>
+  );
+}
+```
+
+#### 6.11. usePaginationWithPrefetch - Component Examples
+
+**📌 Basic Usage:**
+
+```typescript
+import { useEffect } from 'react';
+import { usePaginationWithPrefetch } from '@/hooks/usePaginationWithPrefetch';
+import { productApiService } from '@/features/products/api/ProductApiService';
+
+function ProductTableWithPrefetch() {
+  const {
+    items,
+    page,
+    hasNext,
+    handlePageChange,
+    prefetchNextPage,
+    prefetchDetail,
+  } = usePaginationWithPrefetch({
+    apiService: productApiService,
+    entity: 'products',
+    params: { page: 1, pageSize: 20 },
+  });
+
+  // Auto-prefetch next page
+  useEffect(() => {
+    if (hasNext) {
+      prefetchNextPage();
+    }
+  }, [page, hasNext, prefetchNextPage]);
+
+  return (
+    <table>
+      <tbody>
+        {items.map(product => (
+          <tr
+            key={product.id}
+            onMouseEnter={() => prefetchDetail(product.id!)}
+          >
+            <td>{product.productName}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+```
+
+**📌 Advanced Usage với Smart Prefetching:**
+
+```typescript
+// Component với smart prefetching
+import { useEffect, useCallback } from 'react';
+import { Table, Pagination, Button } from 'antd';
+import { Link } from '@tanstack/react-router';
+import { usePaginationWithPrefetch } from '@/hooks/usePaginationWithPrefetch';
+import { productApiService } from '@/features/products/api/ProductApiService';
+
+function ProductTableSmartPrefetch() {
+  const [page, setPage] = useState(1);
+
+  const {
+    items,
+    totalPages,
+    hasNext,
+    hasPrevious,
+    prefetchNextPage,
+    prefetchPreviousPage,
+    prefetchDetail,
+  } = usePaginationWithPrefetch({
+    apiService: productApiService,
+    entity: 'products',
+    params: { page, pageSize: 20 },
+    prefetchOptions: {
+      enabled: true,
+      debounceMs: 300, // Debounce prefetch calls
+      staleTime: 1000 * 60 * 5, // 5 minutes
+    },
+  });
+
+  // Prefetch adjacent pages
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (hasNext) prefetchNextPage();
+      if (hasPrevious) prefetchPreviousPage();
+    }, 500); // Delay để không prefetch ngay lập tức
+
+    return () => clearTimeout(timer);
+  }, [page, hasNext, hasPrevious, prefetchNextPage, prefetchPreviousPage]);
+
+  // Prefetch on hover với debounce
+  const handleRowHover = useCallback((id: number) => {
+    prefetchDetail(id);
+  }, [prefetchDetail]);
+
+  return (
+    <div>
+      <Table
+        dataSource={items}
+        columns={[
+          {
+            title: 'Product Name',
+            dataIndex: 'productName',
+            render: (text, record) => (
+              <Link
+                to="/admin/products/$id"
+                params={{ id: record.id!.toString() }}
+                onMouseEnter={() => handleRowHover(record.id!)}
+              >
+                {text}
+              </Link>
+            ),
+          },
+          { title: 'Price', dataIndex: 'price' },
+        ]}
+      />
+
+      <Pagination
+        current={page}
+        total={totalPages * 20}
+        onChange={setPage}
+        showSizeChanger={false}
+      />
+    </div>
+  );
+}
+```
+
+---
+
+## 7. Hướng dẫn Sử dụng cho Entity Khác
 
 Để áp dụng cho entity khác (User, Customer, Order, etc.), làm theo các bước:
 
@@ -4581,90 +7197,309 @@ export const CustomerList = () => {
 };
 ```
 
-### 4.11. Prefetching Support
+### 5.9. Prefetching Support - usePaginationWithPrefetch Hook
 
-```typescript
-// shiny-carnival/frontend/src/hooks/usePaginationWithPrefetch.ts
-import { useQueryClient } from '@tanstack/react-query';
-import { usePagination } from './usePagination';
-import { createQueryKeys } from './useApi';
-import type { PagedRequest } from '../lib/axios';
-import type { UsePaginationConfig } from './usePagination';
+⚠️ **LƯU Ý**: Code định nghĩa đã được di chuyển vào phần **5.4.2. usePaginationWithPrefetch - Code Định nghĩa** ở trên.
+
+export interface PrefetchOptions {
+  // OPTIONAL - Prefetch behavior configuration
+  enabled?: boolean;
+  // - Mô tả: Enable/disable prefetch functionality
+  // - Type: boolean
+  // - Default: true
+
+  staleTime?: number;
+  // - Mô tả: Cache time cho prefetched data (milliseconds)
+  // - Type: number
+  // - Default: 1000 * 60 * 5 (5 minutes)
+
+  debounceMs?: number;
+  // - Mô tả: Debounce time cho prefetch calls (milliseconds)
+  // - Type: number
+  // - Default: undefined (no debounce)
+  // - Use case: Tránh prefetch quá nhiều khi user hover nhanh
+
+  onPrefetchSuccess?: () => void;
+  // - Mô tả: Callback khi prefetch thành công
+  // - Type: () => void
+  // - Default: undefined
+
+  onPrefetchError?: (error: Error) => void;
+  // - Mô tả: Callback khi prefetch thất bại
+  // - Type: (error: Error) => void
+  // - Default: undefined
+  // - Note: Error được log nhưng không throw để không ảnh hưởng UX
+}
+
+export interface UsePaginationWithPrefetchConfig<TData> {
+  // REQUIRED
+  apiService: BaseApiService<TData>;
+  // - Mô tả: Instance của ApiService
+  // - Type: BaseApiService<TData>
+
+  entity: string;
+  // - Mô tả: Entity name cho query keys
+  // - Type: string
+
+  // OPTIONAL
+  params?: PagedRequest;
+  // - Mô tả: Pagination + filter parameters
+  // - Type: PagedRequest
+  // - Default: undefined
+  // - Note: sortBy không có default, phải specify trong params nếu cần
+
+  additionalParams?: Record<string, any>;
+  // - Mô tả: Additional static params (filters, etc.)
+  // - Type: Record<string, any>
+  // - Default: undefined
+
+  options?: Parameters<typeof useApiPaginated<TData>>[0]['options'];
+  // - Mô tả: TanStack Query options cho main query
+  // - Default: undefined
+
+  prefetchOptions?: PrefetchOptions;
+  // - Mô tả: Configuration cho prefetch behavior
+  // - Type: PrefetchOptions
+  // - Default: { enabled: true, staleTime: 5 minutes }
+}
 
 /**
  * Hook với prefetching cho next/previous pages
  * Tự động prefetch trang tiếp theo để cải thiện UX
+ * 
+ * @example
+ * ```typescript
+ * // Basic usage
+ * const {
+ *   data,
+ *   items,
+ *   isLoading,
+ *   prefetchNextPage,
+ *   prefetchPreviousPage,
+ *   prefetchDetail,
+ * } = usePaginationWithPrefetch<ProductEntity>({
+ *   apiService: productApiService,
+ *   entity: 'products',
+ *   params: { page: 1, pageSize: 20 },
+ * });
+ * 
+ * // Advanced usage với custom prefetch options
+ * const pagination = usePaginationWithPrefetch<OrderEntity>({
+ *   apiService: orderApiService,
+ *   entity: 'orders',
+ *   params: { page: 1, pageSize: 20, sortBy: 'createdAt' },
+ *   prefetchOptions: {
+ *     enabled: true,
+ *     staleTime: 1000 * 60 * 2, // 2 minutes cho real-time data
+ *     debounceMs: 300, // Debounce 300ms
+ *     onPrefetchSuccess: () => console.log('Prefetch success'),
+ *     onPrefetchError: (error) => console.error('Prefetch failed', error),
+ *   },
+ * });
+ * 
+ * // Prefetch khi hover vào nút next
+ * <Button onMouseEnter={() => prefetchNextPage()}>Next</Button>
+ * ```
  */
 export function usePaginationWithPrefetch<TData = any>(
-  config: UsePaginationConfig<TData>
+  config: UsePaginationWithPrefetchConfig<TData>
 ) {
   const queryClient = useQueryClient();
-  const pagination = usePagination(config);
+  
+  // Prefetch options với defaults
+  const prefetchOptions: Required<Omit<PrefetchOptions, 'onPrefetchSuccess' | 'onPrefetchError' | 'debounceMs'>> & Pick<PrefetchOptions, 'onPrefetchSuccess' | 'onPrefetchError' | 'debounceMs'> = {
+    enabled: config.prefetchOptions?.enabled ?? true,
+    staleTime: config.prefetchOptions?.staleTime ?? 1000 * 60 * 5, // Default 5 minutes
+    debounceMs: config.prefetchOptions?.debounceMs,
+    onPrefetchSuccess: config.prefetchOptions?.onPrefetchSuccess,
+    onPrefetchError: config.prefetchOptions?.onPrefetchError,
+  };
+
+  // Sử dụng useApiPaginated để lấy data và pagination state
+  const paginationQuery = useApiPaginated<TData>({
+    apiService: config.apiService,
+    entity: config.entity,
+    params: config.params,
+    options: config.options,
+  });
+
+  // Lấy query keys factory
   const queryKeys = createQueryKeys(config.entity);
 
-  const { page, pageSize, search, sortBy, sortDesc, hasNext, hasPrevious } = pagination;
+  // Extract pagination data
+  const data = paginationQuery.data;
+  const page = data?.page || config.params?.page || 1;
+  const pageSize = data?.pageSize || config.params?.pageSize || 20;
+  const search = config.params?.search;
+  // ✅ FIXED: Không hardcode default sortBy, dùng từ params hoặc undefined
+  const sortBy = config.params?.sortBy;
+  const sortDesc = config.params?.sortDesc !== false; // Default true nếu không specify
+  const hasNext = data?.hasNext || false;
+  const hasPrevious = data?.hasPrevious || false;
+
+  // Debounce timers (dùng useRef để persist across renders)
+  const nextPageDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevPageDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const detailDebounceTimersRef = useRef<Map<number | string, NodeJS.Timeout>>(new Map());
+
+  // Helper function để prefetch với error handling
+  const prefetchWithErrorHandling = async (
+    queryKey: unknown[],
+    queryFn: () => Promise<any>,
+    onSuccess?: () => void,
+    onError?: (error: Error) => void
+  ) => {
+    try {
+      await queryClient.prefetchQuery({
+        queryKey,
+        queryFn,
+        staleTime: prefetchOptions.staleTime,
+      });
+      onSuccess?.();
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      // Log error nhưng không throw để không ảnh hưởng UX
+      console.warn('[usePaginationWithPrefetch] Prefetch failed:', err);
+      onError?.(err);
+    }
+  };
 
   // Prefetch next page
   const prefetchNextPage = () => {
-    if (hasNext) {
+    if (!prefetchOptions.enabled || !hasNext) return;
+
+    const executePrefetch = () => {
       const nextParams: PagedRequest = {
         page: page + 1,
         pageSize,
-        search: search || undefined,
-        sortBy,
+        ...(search && { search }),
+        ...(sortBy && { sortBy }),
         sortDesc,
         ...config.additionalParams,
       };
 
-      queryClient.prefetchQuery({
-        queryKey: queryKeys.list(nextParams),
-        queryFn: () => config.apiService.getPaginated(nextParams),
-        staleTime: 1000 * 60 * 5,
-      });
+      prefetchWithErrorHandling(
+        queryKeys.list(nextParams),
+        () => config.apiService.getPaginated(nextParams),
+        prefetchOptions.onPrefetchSuccess,
+        prefetchOptions.onPrefetchError
+      );
+    };
+
+    // Debounce nếu có
+    if (prefetchOptions.debounceMs) {
+      if (nextPageDebounceTimerRef.current) {
+        clearTimeout(nextPageDebounceTimerRef.current);
+      }
+      nextPageDebounceTimerRef.current = setTimeout(executePrefetch, prefetchOptions.debounceMs);
+    } else {
+      executePrefetch();
     }
   };
 
   // Prefetch previous page
   const prefetchPreviousPage = () => {
-    if (hasPrevious) {
+    if (!prefetchOptions.enabled || !hasPrevious) return;
+
+    const executePrefetch = () => {
       const prevParams: PagedRequest = {
         page: page - 1,
         pageSize,
-        search: search || undefined,
-        sortBy,
+        ...(search && { search }),
+        ...(sortBy && { sortBy }),
         sortDesc,
         ...config.additionalParams,
       };
 
-      queryClient.prefetchQuery({
-        queryKey: queryKeys.list(prevParams),
-        queryFn: () => config.apiService.getPaginated(prevParams),
-        staleTime: 1000 * 60 * 5,
-      });
+      prefetchWithErrorHandling(
+        queryKeys.list(prevParams),
+        () => config.apiService.getPaginated(prevParams),
+        prefetchOptions.onPrefetchSuccess,
+        prefetchOptions.onPrefetchError
+      );
+    };
+
+    // Debounce nếu có
+    if (prefetchOptions.debounceMs) {
+      if (prevPageDebounceTimerRef.current) {
+        clearTimeout(prevPageDebounceTimerRef.current);
+      }
+      prevPageDebounceTimerRef.current = setTimeout(executePrefetch, prefetchOptions.debounceMs);
+    } else {
+      executePrefetch();
     }
   };
 
   // Prefetch detail khi hover
   const prefetchDetail = (id: number | string) => {
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.detail(id),
-      queryFn: () => config.apiService.getById(id),
-      staleTime: 1000 * 60 * 5,
-    });
+    if (!prefetchOptions.enabled) return;
+
+    const executePrefetch = () => {
+      prefetchWithErrorHandling(
+        queryKeys.detail(id),
+        () => config.apiService.getById(id),
+        prefetchOptions.onPrefetchSuccess,
+        prefetchOptions.onPrefetchError
+      );
+    };
+
+    // Debounce nếu có (per-item debounce)
+    if (prefetchOptions.debounceMs) {
+      const existingTimer = detailDebounceTimersRef.current.get(id);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      const timer = setTimeout(() => {
+        executePrefetch();
+        detailDebounceTimersRef.current.delete(id);
+      }, prefetchOptions.debounceMs);
+      detailDebounceTimersRef.current.set(id, timer);
+    } else {
+      executePrefetch();
+    }
   };
 
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      if (nextPageDebounceTimerRef.current) {
+        clearTimeout(nextPageDebounceTimerRef.current);
+      }
+      if (prevPageDebounceTimerRef.current) {
+        clearTimeout(prevPageDebounceTimerRef.current);
+      }
+      detailDebounceTimersRef.current.forEach(timer => clearTimeout(timer));
+      detailDebounceTimersRef.current.clear();
+    };
+  }, []);
+
+  // No-op functions nếu prefetch disabled
+  const noop = () => {};
+
   return {
-    ...pagination,
-    prefetchNextPage,
-    prefetchPreviousPage,
-    prefetchDetail,
+    // Spread tất cả properties từ useApiPaginated
+    ...paginationQuery,
+    
+    // Extract items từ PagedList
+    items: data?.items || [],
+    totalCount: data?.totalCount || 0,
+    totalPages: data?.totalPages || 0,
+    hasNext,
+    hasPrevious,
+    page,
+    pageSize,
+    
+    // Prefetch functions (no-op nếu disabled)
+    prefetchNextPage: prefetchOptions.enabled ? prefetchNextPage : noop,
+    prefetchPreviousPage: prefetchOptions.enabled ? prefetchPreviousPage : noop,
+    prefetchDetail: prefetchOptions.enabled ? prefetchDetail : noop,
   };
 }
 ```
 
-## 6. Pagination Examples Chi tiết
+## 7. Pagination Examples Chi tiết
 
-### 6.1. Basic Pagination với Ant Design Table
+### 7.1. Basic Pagination với Ant Design Table
 
 ```typescript
 // shiny-carnival/frontend/src/features/products/components/ProductTableBasic.tsx
@@ -4764,7 +7599,7 @@ export const ProductTableBasic = () => {
 };
 ```
 
-### 6.2. URL-based Pagination Example
+### 7.2. URL-based Pagination Example
 
 ```typescript
 // shiny-carnival/frontend/src/features/products/pages/ProductListPageWithRouter.tsx
@@ -4845,15 +7680,15 @@ export const ProductListPageWithRouter = () => {
 };
 ```
 
-### 6.3. Infinite Scroll Example
+### 7.3. Infinite Scroll Example
 
 Xem code example chi tiết trong phần phân tích pagination ở trên.
 
-### 6.4. Advanced Filters Example
+### 7.4. Advanced Filters Example
 
 Xem code example chi tiết trong phần phân tích pagination ở trên.
 
-### 6.5. Prefetching Example
+### 7.5. Prefetching Example
 
 ```typescript
 // Component với prefetching
@@ -4919,9 +7754,9 @@ export const ProductTableWithPrefetch = () => {
 };
 ```
 
-## 7. Performance Optimization & Best Practices
+## 8. Performance Optimization & Best Practices
 
-### 7.1. Debounced Search
+### 8.1. Debounced Search
 
 ```typescript
 // Hook với debounced search
@@ -4955,7 +7790,7 @@ export function useProductsWithDebouncedSearch() {
 }
 ```
 
-### 7.2. Optimistic Updates với Pagination
+### 8.2. Optimistic Updates với Pagination
 
 ```typescript
 // Hook với optimistic updates
@@ -5001,7 +7836,7 @@ export const useUpdateProductOptimistic = () => {
 };
 ```
 
-### 7.3. Persistent Pagination State
+### 8.3. Persistent Pagination State
 
 ```typescript
 // Hook với localStorage persistence
@@ -5032,7 +7867,7 @@ export function useProductsWithPersistence() {
 }
 ```
 
-### 7.4. Best Practices Checklist
+### 8.4. Best Practices Checklist
 
 ✅ **State Management**
 - Sử dụng URL params cho pagination state (SEO friendly, shareable)
@@ -5067,7 +7902,7 @@ export function useProductsWithPersistence() {
 - Focus management
 - Screen reader support
 
-## 8. Tổng kết
+## 9. Tổng kết
 
 ### ✅ Ưu điểm của hệ thống này:
 
@@ -5186,9 +8021,9 @@ export function useProductsWithPersistence() {
 
 ---
 
-## 9. Backend Integration Guide
+## 10. Backend Integration Guide
 
-### 9.1. API Endpoint Mapping Table
+### 10.1. API Endpoint Mapping Table
 
 Bảng mapping đầy đủ giữa Frontend Hooks và Backend Endpoints:
 
@@ -5243,7 +8078,7 @@ Bảng mapping đầy đủ giữa Frontend Hooks và Backend Endpoints:
 | | `useApiList` | `GET /api/admin/reports/top-products` | GET | Admin | `TopProductsSearchRequest` | `ApiResponse<PagedList<TopProductDto>>` |
 | | `useApiList` | `GET /api/admin/reports/top-customers` | GET | Admin | `TopCustomersSearchRequest` | `ApiResponse<PagedList<TopCustomerDto>>` |
 
-### 9.2. Query Parameters Contract
+### 10.2. Query Parameters Contract
 
 #### Frontend TypeScript Interfaces (camelCase):
 ```typescript
@@ -5328,7 +8163,7 @@ GET /api/admin/products?page=1&pagesize=20&search=coca&sortby=ProductName&sortde
 
 **Xem thêm**: [BACKEND_API_REFERENCE.md - Section 1.7: Query Parameters Naming Convention](../api/BACKEND_API_REFERENCE.md#17-query-parameters-naming-convention)
 
-### 9.3. Authorization Requirements
+### 10.3. Authorization Requirements
 
 | Endpoint | Required Role | Header |
 |----------|---------------|--------|
@@ -5354,7 +8189,7 @@ GET /api/admin/products?page=1&pagesize=20&search=coca&sortby=ProductName&sortde
 }
 ```
 
-### 9.4. Error Response Structure
+### 10.4. Error Response Structure
 
 Backend trả về errors trong `ApiResponse<T>` wrapper:
 
@@ -5384,7 +8219,7 @@ Backend trả về errors trong `ApiResponse<T>` wrapper:
 - `404 Not Found` - Resource not found
 - `500 Internal Server Error` - Server error
 
-### 9.5. SortBy Options & Filters
+### 10.5. SortBy Options & Filters
 
 Mỗi entity có các SortBy options và filters riêng:
 
@@ -5405,7 +8240,7 @@ Mỗi entity có các SortBy options và filters riêng:
 - ⚠️ **Top Products** và **Top Customers** KHÔNG hỗ trợ `Search`, `SortBy`, `SortDesc`
 - ⚠️ Chỉ hỗ trợ `Page`, `PageSize`, `StartDate`, `EndDate`
 
-### 9.6. Validation Rules
+### 10.6. Validation Rules
 
 #### Common Validation (tất cả endpoints):
 
@@ -5476,7 +8311,7 @@ Mỗi entity có các SortBy options và filters riêng:
 - `quantityChange`: Required, integer (int32), can be negative (decrease) or positive (increase), no min/max constraint
 - `reason`: Required, string, min 1 character, max 255 characters
 
-### 9.6.1. Request Validation Rules - Additional Properties
+### 10.6.1. Request Validation Rules - Additional Properties
 
 **⚠️ QUAN TRỌNG**: Tất cả request schemas có `additionalProperties: false`, nghĩa là:
 
@@ -5510,7 +8345,7 @@ const request = {
 
 **Xem thêm**: [BACKEND_API_REFERENCE.md - Section 1.8: Request Validation Rules](../api/BACKEND_API_REFERENCE.md#18-request-validation-rules)
 
-### 9.6.2. Nullable vs Optional Fields
+### 10.6.2. Nullable vs Optional Fields
 
 **Sự khác biệt**:
 - **Optional (`?`):** Field có thể không gửi trong request (không có trong object)
@@ -5535,7 +8370,7 @@ interface CreateCustomerRequest {
 
 **Xem thêm**: [BACKEND_API_REFERENCE.md - Section 1.9: Nullable vs Optional Fields](../api/BACKEND_API_REFERENCE.md#19-nullable-vs-optional-fields)
 
-### 9.7. Breaking Changes & Migration Notes
+### 10.7. Breaking Changes & Migration Notes
 
 #### ❌ KHÔNG hỗ trợ PATCH cho hầu hết entities
 
@@ -5702,7 +8537,7 @@ interface SalesReportDto {
 }
 ```
 
-### 9.7. Testing Checklist
+### 10.7. Testing Checklist
 
 Khi implement hooks cho entity mới, test các scenarios sau:
 
@@ -5736,7 +8571,7 @@ Khi implement hooks cho entity mới, test các scenarios sau:
 - [ ] Forbidden access (403)
 - [ ] Token expiration handling
 
-### 9.8. Special Endpoints
+### 10.8. Special Endpoints
 
 Các endpoints đặc biệt không theo pattern CRUD chuẩn:
 
@@ -5862,7 +8697,7 @@ mutate({
 // Response: ApiResponse<PromotionResponseDto>
 ```
 
-### 9.9. Common Pitfalls & Solutions
+### 10.9. Common Pitfalls & Solutions
 
 #### 1. Query Parameters Case Sensitivity
 
@@ -5938,7 +8773,7 @@ axiosInstance.interceptors.request.use((config) => {
 });
 ```
 
-### 9.9. Performance Optimization
+### 10.10. Performance Optimization
 
 #### Cache Strategy
 
@@ -5992,7 +8827,7 @@ const { data } = useApiPaginated(productService, 'products', {
 
 ---
 
-## 10. Tổng kết
+## 11. Tổng kết
 
 ### ✅ Đã đồng bộ hóa:
 
@@ -6021,7 +8856,7 @@ Plan này giờ đã **hoàn toàn tương thích** với backend TapHoaNho và 
 
 ---
 
-## 10. CODE EXAMPLES CHI TIẾT
+## 12. CODE EXAMPLES CHI TIẾT
 
 📚 **Xem tài liệu riêng**: [`customHookCallAPIPlan_CodeExamples.md`](./customHookCallAPIPlan_CodeExamples.md)
 
@@ -6076,4 +8911,3 @@ Tài liệu này cung cấp **code examples đầy đủ cho TẤT CẢ 52 endpo
 - **10 modules** với examples chi tiết
 - **100% production-ready** code
 
-**👉 [Xem tài liệu đầy đủ tại đây](./customHookCallAPIPlan_CodeExamples.md)**
