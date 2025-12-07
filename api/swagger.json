@@ -136,7 +136,7 @@
         ],
         "parameters": [
           {
-            "name": "MinProductCount",
+            "name": "Page",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -144,27 +144,11 @@
             }
           },
           {
-            "name": "MaxProductCount",
+            "name": "PageSize",
             "in": "query",
             "schema": {
               "type": "integer",
               "format": "int32"
-            }
-          },
-          {
-            "name": "CreatedAfter",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date-time"
-            }
-          },
-          {
-            "name": "CreatedBefore",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date-time"
             }
           },
           {
@@ -186,22 +170,6 @@
             "in": "query",
             "schema": {
               "type": "boolean"
-            }
-          },
-          {
-            "name": "Page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
             }
           }
         ],
@@ -332,6 +300,22 @@
         ],
         "parameters": [
           {
+            "name": "Page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "PageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
             "name": "Search",
             "in": "query",
             "schema": {
@@ -350,22 +334,6 @@
             "in": "query",
             "schema": {
               "type": "boolean"
-            }
-          },
-          {
-            "name": "Page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
             }
           }
         ],
@@ -496,7 +464,7 @@
         ],
         "parameters": [
           {
-            "name": "ProductId",
+            "name": "Page",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -504,15 +472,7 @@
             }
           },
           {
-            "name": "MinQuantity",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "MaxQuantity",
+            "name": "PageSize",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -538,22 +498,6 @@
             "in": "query",
             "schema": {
               "type": "boolean"
-            }
-          },
-          {
-            "name": "Page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
             }
           }
         ],
@@ -655,6 +599,22 @@
             }
           },
           {
+            "name": "Page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "PageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
             "name": "Search",
             "in": "query",
             "schema": {
@@ -673,22 +633,6 @@
             "in": "query",
             "schema": {
               "type": "boolean"
-            }
-          },
-          {
-            "name": "Page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
             }
           }
         ],
@@ -745,6 +689,22 @@
             }
           },
           {
+            "name": "Page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "PageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
             "name": "Search",
             "in": "query",
             "schema": {
@@ -763,22 +723,6 @@
             "in": "query",
             "schema": {
               "type": "boolean"
-            }
-          },
-          {
-            "name": "Page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
             }
           }
         ],
@@ -1068,6 +1012,22 @@
             }
           },
           {
+            "name": "Page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "PageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
             "name": "Search",
             "in": "query",
             "schema": {
@@ -1086,22 +1046,6 @@
             "in": "query",
             "schema": {
               "type": "boolean"
-            }
-          },
-          {
-            "name": "Page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
             }
           }
         ],
@@ -1232,6 +1176,22 @@
         ],
         "parameters": [
           {
+            "name": "Page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "PageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
             "name": "Search",
             "in": "query",
             "schema": {
@@ -1250,22 +1210,6 @@
             "in": "query",
             "schema": {
               "type": "boolean"
-            }
-          },
-          {
-            "name": "Page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
             }
           }
         ],
@@ -1515,37 +1459,28 @@
         ],
         "parameters": [
           {
-            "name": "StartDate",
+            "name": "startDate",
             "in": "query",
-            "required": true,
             "schema": {
               "type": "string",
               "format": "date-time"
             }
           },
           {
-            "name": "EndDate",
+            "name": "endDate",
             "in": "query",
-            "required": true,
             "schema": {
               "type": "string",
               "format": "date-time"
             }
           },
           {
-            "name": "Page",
+            "name": "limit",
             "in": "query",
             "schema": {
               "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
+              "format": "int32",
+              "default": 10
             }
           }
         ],
@@ -1563,37 +1498,28 @@
         ],
         "parameters": [
           {
-            "name": "StartDate",
+            "name": "startDate",
             "in": "query",
-            "required": true,
             "schema": {
               "type": "string",
               "format": "date-time"
             }
           },
           {
-            "name": "EndDate",
+            "name": "endDate",
             "in": "query",
-            "required": true,
             "schema": {
               "type": "string",
               "format": "date-time"
             }
           },
           {
-            "name": "Page",
+            "name": "limit",
             "in": "query",
             "schema": {
               "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
+              "format": "int32",
+              "default": 10
             }
           }
         ],
@@ -1610,6 +1536,22 @@
           "Suppliers"
         ],
         "parameters": [
+          {
+            "name": "Page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "PageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
           {
             "name": "Search",
             "in": "query",
@@ -1629,22 +1571,6 @@
             "in": "query",
             "schema": {
               "type": "boolean"
-            }
-          },
-          {
-            "name": "Page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
             }
           }
         ],
@@ -1775,7 +1701,15 @@
         ],
         "parameters": [
           {
-            "name": "Role",
+            "name": "Page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "PageSize",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -1801,22 +1735,6 @@
             "in": "query",
             "schema": {
               "type": "boolean"
-            }
-          },
-          {
-            "name": "Page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "PageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
             }
           }
         ],
