@@ -36,8 +36,12 @@
   - Định nghĩa types.
   - Tạo `[Entity]ApiService` extend `BaseApiService`.
   - (Tuỳ chọn) Tạo hooks wrapper feature-level.
-- Giảm đáng kể số lượng axios call “thủ công” trong components.
+- Giảm đáng kể số lượng axios call "thủ công" trong components.
 - Error handling và pagination được tập trung, không lặp lại.
+- Pagination hooks hỗ trợ đầy đủ:
+  - Page components: URL sync với `usePaginationWithRouter`.
+  - Modal/Drawer: Local state với `usePaginationLocal`.
+  - Advanced filters: categoryId, supplierId, minPrice, maxPrice, etc.
 
 ---
 
@@ -173,7 +177,15 @@
 - **`src/hooks/useApi.ts`**
   - `createQueryKeys(entity: string)`.
   - Universal hooks:
-    - `useApiList`, `useApiDetail`, `useApiPaginated`, `useApiCreate`, `useApiUpdate`, `useApiPatch`, `useApiDelete`, `useApiCustomQuery`, `useApiCustomMutation`.
+    - `useApiList`, `useApiPaginated`, `useApiDetail`, `useApiCreate`, `useApiUpdate`, `useApiPatch`, `useApiDelete`, `useApiCustomQuery`, `useApiCustomMutation`.
+- **`src/hooks/usePaginationWithRouter.ts`**
+  - Hook quản lý pagination với URL sync cho Page components.
+  - Hỗ trợ advanced filters (categoryId, supplierId, minPrice, maxPrice, etc.).
+  - Tự động sync pagination state với URL query params.
+- **`src/hooks/usePaginationLocal.ts`**
+  - Hook quản lý pagination với local state cho Modal/Drawer.
+  - Hỗ trợ advanced filters tương tự `usePaginationWithRouter`.
+  - Không cần router context.
 - **Feature services**
   - `ProductApiService`, `UserApiService`, … extend `BaseApiService`.
 - **Feature hooks wrapper**
@@ -202,18 +214,37 @@
     - `all`, `lists`, `list(params)`, `details`, `detail(id)`.
   - `useApiList`:
     - Gọi `useQuery` → `apiService.getAll(params)`.
-  - `useApiDetail`:
-    - Gọi `useQuery` → `apiService.getById(id)`.
+    - Trả về `TData[]` (không phân trang).
   - `useApiPaginated`:
     - Gọi `useQuery` → `apiService.getPaginated(params)`.
     - Trả về `PagedList<TData>` với pagination metadata.
-    - Sử dụng `keepPreviousData: true` để giữ data cũ khi đang fetch trang mới.
+    - Sử dụng `placeholderData` để giữ data cũ khi đang fetch trang mới.
     - Query key: `[...queryKeys.lists(), 'paginated', params]`.
+    - **Core hook** cho pagination, không quản lý state.
+  - `useApiDetail`:
+    - Gọi `useQuery` → `apiService.getById(id)`.
+    - Tự động disable khi `id` là falsy.
   - `useApiCreate`, `useApiUpdate`, `useApiPatch`, `useApiDelete`:
     - Gọi `useMutation` → wrap tương ứng `create`, `update`, `patch`, `delete`.
     - Tự động invalidate hoặc remove cache sau mutate.
+    - Hỗ trợ `invalidateQueries` để invalidate thêm các queries liên quan.
   - `useApiCustomQuery`, `useApiCustomMutation`:
     - Cho phép logic query/mutation tùy chỉnh, vẫn tận dụng query keys & cache.
+
+- **Pagination Management Hooks**
+  - `usePaginationWithRouter`:
+    - Wrapper cho `useApiPaginated` với URL sync.
+    - Quản lý pagination state qua TanStack Router (URL query params).
+    - Hỗ trợ advanced filters (categoryId, supplierId, minPrice, maxPrice, etc.).
+    - Cung cấp handlers: `handlePageChange`, `handleSearch`, `handleSort`, `handleFilterChange`, `clearFilters`.
+    - Expose `filters` và `activeFiltersCount` để UI hiển thị.
+    - **Dùng cho Page components** (có router context).
+  - `usePaginationLocal`:
+    - Wrapper cho `useApiPaginated` với local state (`useState`).
+    - Quản lý pagination state trong component memory.
+    - Hỗ trợ advanced filters tương tự `usePaginationWithRouter`.
+    - Cung cấp handlers tương tự.
+    - **Dùng cho Modal/Drawer** (không có router context).
 
 - **Feature ApiServices**
   - Ví dụ: `ProductApiService`:
@@ -224,10 +255,16 @@
       - `getProductsBySupplier(supplierId: number, params?: Omit<PagedRequest, 'supplierId'>)`.
 
 - **Feature hooks**
-  - Ví dụ: `useProducts`, `useProduct`, `useCreateProduct`:
+  - Ví dụ: `useProducts`, `useProductsPaginated`, `useProduct`, `useCreateProduct`:
     - Đặt `ENTITY = 'products'`.
     - Gọi universal hooks với `apiService = productApiService`, `entity = ENTITY`.
     - Bổ sung `options` (staleTime, onSuccess, onError, …) để phù hợp nghiệp vụ.
+  - Ví dụ: `useProductsWithRouter` (Page components):
+    - Wrapper cho `usePaginationWithRouter` với `productApiService` và `routeApi`.
+    - Tự động quản lý URL sync và filters.
+  - Ví dụ: `useProductsLocal` (Modal/Drawer):
+    - Wrapper cho `usePaginationLocal` với `productApiService`.
+    - Quản lý local state cho pagination và filters.
 
 **5.3. Cấu trúc thư mục và Hướng dẫn Implementation**
 
@@ -249,7 +286,9 @@ src/
 │   └── axios.ts                  # Axios client instance
 │
 ├── hooks/                        # Universal hooks (cross-feature)
-│   └── useApi.ts                 # useApiList, useApiDetail, useApiCreate, etc.
+│   ├── useApi.ts                 # useApiList, useApiPaginated, useApiDetail, useApiCreate, etc.
+│   ├── usePaginationWithRouter.ts # URL-based pagination cho Page components
+│   └── usePaginationLocal.ts     # Local state pagination cho Modal/Drawer
 │
 └── features/                     # Feature modules (FSD structure)
     ├── products/                 # Product feature
@@ -321,13 +360,16 @@ import { BaseApiService } from '@/lib/api/base/BaseApiService';
 
 ```
 src/hooks/
-└── useApi.ts                     # useApiList, useApiDetail, useApiCreate, etc.
+├── useApi.ts                     # useApiList, useApiPaginated, useApiDetail, useApiCreate, etc.
+├── usePaginationWithRouter.ts   # URL-based pagination cho Page components
+└── usePaginationLocal.ts        # Local state pagination cho Modal/Drawer
 ```
 
 **Quy tắc**:
 - ✅ Hooks **generic**, không hard-code entity nào.
 - ✅ Nhận `apiService` và `entity` làm parameters.
 - ✅ Có thể được wrap lại ở feature-level hooks nếu cần customization.
+- ✅ Pagination hooks hỗ trợ advanced filters (categoryId, supplierId, minPrice, maxPrice, etc.).
 
 ##### C. Feature Structure (`src/features/[entity]/`)
 
@@ -366,6 +408,8 @@ graph TD
 
     subgraph Hooks["Universal Hooks (src/hooks/)"]
         B1[useApi.ts]
+        B2[usePaginationWithRouter.ts]
+        B3[usePaginationLocal.ts]
     end
 
     subgraph Feature1["Feature: Products (src/features/products/)"]
@@ -389,8 +433,12 @@ graph TD
     A2 --> A4
 
     C2 --> B1
+    C2 --> B2
     D2 --> B1
+    D2 --> B2
     B1 --> A2
+    B2 --> B1
+    B3 --> B1
 
     C2 --> C1
     D2 --> D1
@@ -406,7 +454,56 @@ Xem ví dụ implementation đầy đủ trong tài liệu `CustomHookAPIFactory
 
 ### 6. Runtime View
 
-#### 6.1. Scenario: Fetch danh sách (GET all) qua `useApiList`
+#### 6.1. Scenario: Fetch danh sách có phân trang qua `usePaginationWithRouter`
+
+```mermaid
+sequenceDiagram
+    participant C as React Component (Page)
+    participant H as usePaginationWithRouter Hook
+    participant R as TanStack Router
+    participant Q as useApiPaginated Hook
+    participant TQ as TanStack Query
+    participant S as ProductApiService (BaseApiService)
+    participant A as axiosClient
+    participant B as Backend API
+
+    C->>H: call usePaginationWithRouter({ apiService: S, entity: "products", routeApi })
+    H->>R: routeApi.useSearch() - Lấy params từ URL
+    R-->>H: { page: 1, pageSize: 20, search: "laptop", categoryId: 1, ... }
+    H->>H: Build params từ URL + filters
+    H->>Q: useApiPaginated({ params })
+    Q->>TQ: useQuery({ queryKey, queryFn })
+    TQ->>S: queryFn() => S.getPaginated(params)
+    S->>A: axiosClient.get(endpoint, { params })
+    A->>B: HTTP GET /admin/products?Page=1&PageSize=20&Search=laptop&CategoryId=1
+    B-->>A: ApiResponse<PagedList<ProductEntity>>
+    A-->>S: ApiResponse<PagedList<ProductEntity>>
+    S-->>S: unwrapResponse(response)
+    S-->>TQ: PagedList<ProductEntity>
+    TQ-->>Q: { data, isLoading, isError, error }
+    Q-->>H: PagedList<ProductEntity> + query state
+    H-->>C: { items, totalCount, page, pageSize, filters, handlePageChange, handleFilterChange, ... }
+    
+    Note over C,H: User thay đổi filter
+    C->>H: pagination.handleFilterChange({ categoryId: 2 })
+    H->>R: navigate({ search: { ...prev, categoryId: 2, page: 1 } })
+    R->>H: URL updated → useSearch() trả về params mới
+    H->>Q: useApiPaginated refetch với params mới
+```
+
+**Diễn giải**
+
+1. Component (Page) gọi `usePaginationWithRouter` với `productApiService` và `routeApi`.
+2. Hook lấy pagination params và filters từ URL qua `routeApi.useSearch()`.
+3. Hook gọi `useApiPaginated` với params đã build từ URL.
+4. `useApiPaginated` đăng ký `useQuery` với `queryKey` và `queryFn` gọi `apiService.getPaginated`.
+5. `ProductApiService` dùng Axios gọi backend với params đã convert sang PascalCase.
+6. Backend trả về `ApiResponse<PagedList<ProductEntity>>`.
+7. `unwrapResponse` xử lý `isError`, trả về `PagedList<ProductEntity>`.
+8. Hook expose `items`, `totalCount`, `filters`, `handlePageChange`, `handleFilterChange`, etc.
+9. Khi user thay đổi filter, hook update URL → trigger refetch tự động.
+
+#### 6.2. Scenario: Fetch danh sách (GET all) qua `useApiList`
 
 ```mermaid
 sequenceDiagram
@@ -431,13 +528,13 @@ sequenceDiagram
 
 **Diễn giải**
 
-1. Component gọi `useProducts()` → `useApiList` với `productApiService`.
+1. Component gọi `useApiList` với `productApiService`.
 2. `useApiList` đăng ký `useQuery` với `queryKey` chuẩn và `queryFn` gọi `apiService.getAll`.
 3. `ProductApiService` dùng Axios gọi backend, nhận `ApiResponse<ProductEntity[]>`.
 4. `unwrapResponse` xử lý `isError`, trả về `ProductEntity[]` hoặc throw.
 5. TanStack Query cập nhật cache & state, trả về data/status cho component.
 
-#### 6.2. Scenario: CREATE (POST) qua `useApiCreate`
+#### 6.3. Scenario: CREATE (POST) qua `useApiCreate`
 
 ```mermaid
 sequenceDiagram
@@ -470,7 +567,7 @@ sequenceDiagram
     - Invalidate **tất cả list queries** của entity.
     - Gọi `options?.onSuccess` tuỳ biến (toast, navigate…).
 
-#### 6.3. Scenario: DELETE + cache management qua `useApiDelete`
+#### 6.4. Scenario: DELETE + cache management qua `useApiDelete`
 
 ```mermaid
 sequenceDiagram
@@ -495,7 +592,50 @@ sequenceDiagram
     Q-->>C: { isSuccess, isPending }
 ```
 
-#### 6.4. Concurrency & Error handling
+#### 6.5. Scenario: Pagination với Local State qua `usePaginationLocal`
+
+```mermaid
+sequenceDiagram
+    participant C as React Component (Modal/Drawer)
+    participant H as usePaginationLocal Hook
+    participant S as useState (Local State)
+    participant Q as useApiPaginated Hook
+    participant TQ as TanStack Query
+    participant Svc as ProductApiService
+    participant A as axiosClient
+    participant B as Backend API
+
+    C->>H: call usePaginationLocal({ apiService: Svc, entity: "products" })
+    H->>S: useState cho page, pageSize, search, sortBy, filters
+    H->>H: Build params từ local state
+    H->>Q: useApiPaginated({ params })
+    Q->>TQ: useQuery({ queryKey, queryFn })
+    TQ->>Svc: queryFn() => Svc.getPaginated(params)
+    Svc->>A: axiosClient.get(endpoint, { params })
+    A->>B: HTTP GET /admin/products?Page=1&PageSize=20
+    B-->>A: ApiResponse<PagedList<ProductEntity>>
+    A-->>Svc: ApiResponse<PagedList<ProductEntity>>
+    Svc-->>TQ: PagedList<ProductEntity>
+    TQ-->>Q: { data, isLoading }
+    Q-->>H: PagedList<ProductEntity>
+    H-->>C: { items, totalCount, page, filters, handlePageChange, handleFilterChange, ... }
+    
+    Note over C,H: User thay đổi filter trong Modal
+    C->>H: pagination.handleFilterChange({ categoryId: 2 })
+    H->>S: setFilters({ ...prev, categoryId: 2 }), setPage(1)
+    S->>H: State updated
+    H->>Q: useApiPaginated refetch với params mới
+```
+
+**Diễn giải**
+
+1. Component (Modal/Drawer) gọi `usePaginationLocal` với `productApiService`.
+2. Hook quản lý pagination state bằng `useState` (không dùng URL).
+3. Hook gọi `useApiPaginated` với params từ local state.
+4. Khi user thay đổi filter, hook update local state → trigger refetch.
+5. **Khác biệt với `usePaginationWithRouter`**: State không sync với URL, phù hợp cho Modal/Drawer.
+
+#### 6.6. Concurrency & Error handling
 
 - Concurrency (song song nhiều query/mutation) được TanStack Query quản lý.
 - `unwrapResponse` chuyển mọi lỗi API (`isError = true` hoặc `data = null`) thành `Error`.
@@ -574,9 +714,23 @@ sequenceDiagram
 - Tích hợp với:
   - Backend REST API.
   - React component hierarchy.
+  - TanStack Router (cho `usePaginationWithRouter`).
 - Hỗ trợ integration nâng cao:
   - Custom endpoints qua `custom()` và `useApiCustomQuery/useApiCustomMutation`.
   - Bulk operations, upload file, thống kê, … nằm trong tầng feature-specific.
+- **Decision Tree cho Pagination Hooks**:
+  ```
+  Có router context?
+  ├─ YES → Page component?
+  │   ├─ YES → usePaginationWithRouter ✅ (URL sync, filters support)
+  │   └─ NO → useApiPaginated (custom logic)
+  │
+  └─ NO → Modal/Drawer?
+      ├─ YES → usePaginationLocal ✅ (local state, filters support)
+      └─ NO → Nhận params từ props?
+          ├─ YES → useApiPaginated ✅
+          └─ NO → usePaginationLocal ✅
+  ```
 
 **Development concepts**
 
@@ -632,11 +786,28 @@ sequenceDiagram
 **AD-4: Query keys có cấu trúc thông qua factory**
 
 - **Thay thế cho**:
-  - Query key kiểu string “tự phát”: `'products-list'`, `'products-detail-123'`.
+  - Query key kiểu string "tự phát": `'products-list'`, `'products-detail-123'`.
 - **Lý do**:
   - Invalidate theo nhóm dễ dàng, type-safe, hạn chế typo.
 - **Hệ quả**:
   - Cần tuân thủ strict convention khi thêm hooks/query mới.
+
+**AD-5: Tách biệt Pagination Hooks theo Use Case**
+
+- **Thay thế cho**:
+  - Một hook pagination duy nhất cho tất cả use cases.
+  - Quản lý state thủ công trong component.
+- **Lý do**:
+  - **Page components** cần URL sync (deep linking, shareable URLs, browser back/forward).
+  - **Modal/Drawer** không có router context, cần local state.
+  - **Nested components** nhận params từ props, không quản lý state.
+- **Giải pháp**:
+  - `useApiPaginated`: Core hook (data fetching only), dùng cho nested components.
+  - `usePaginationWithRouter`: URL-based pagination cho Page components (hỗ trợ advanced filters).
+  - `usePaginationLocal`: Local state pagination cho Modal/Drawer (hỗ trợ advanced filters).
+- **Hệ quả**:
+  - Dev cần hiểu khi nào dùng hook nào.
+  - Cần training về decision tree: có router context? → Page? → Modal/Drawer? → Nested?
 
 ---
 
@@ -649,7 +820,8 @@ sequenceDiagram
   - List lớn phải phân trang.
 - **Đáp ứng**:
   - Caching với TanStack Query.
-  - `useApiPaginated` với `keepPreviousData` để chuyển trang mượt.
+  - `useApiPaginated` với `placeholderData` để chuyển trang mượt (giữ data cũ khi fetch trang mới).
+  - `usePaginationWithRouter` và `usePaginationLocal` tận dụng `useApiPaginated` để tối ưu performance.
 
 **Security**
 
@@ -721,8 +893,17 @@ sequenceDiagram
 - **ApiServiceInterface**: Interface mô tả các method chuẩn mà mọi ApiService phải tuân theo.
 - **Hybrid Approach**: Kết hợp lớp base generic với các extension đặc thù feature.
 - **Universal hooks (`useApi*`)**: Bộ hooks generic dùng cho mọi entity thông qua `BaseApiService`.
+  - `useApiList`: GET danh sách không phân trang.
+  - `useApiPaginated`: GET danh sách có phân trang (core hook).
+  - `useApiDetail`: GET chi tiết theo ID.
+  - `useApiCreate`, `useApiUpdate`, `useApiPatch`, `useApiDelete`: Mutations.
+  - `useApiCustomQuery`, `useApiCustomMutation`: Custom queries/mutations.
+- **Pagination Management Hooks**:
+  - `usePaginationWithRouter`: URL-based pagination cho Page components (hỗ trợ advanced filters).
+  - `usePaginationLocal`: Local state pagination cho Modal/Drawer (hỗ trợ advanced filters).
 - **Query Key Factory**: Pattern tạo query keys có cấu trúc cho TanStack Query.
 - **Optimistic Update**: Chiến lược cập nhật UI trước khi server trả kết quả; rollback nếu lỗi.
+- **Advanced Filters**: Hỗ trợ filters phức tạp (categoryId, supplierId, minPrice, maxPrice, etc.) trong pagination hooks.
 
 ---
 
@@ -738,10 +919,12 @@ flowchart TD
 
     subgraph Hooks["CustomHookAPIFactory (Hooks Layer)"]
         H1[useProducts → useApiList]
-        H2[useProduct → useApiDetail]
-        H3[useCreateProduct → useApiCreate]
-        H4[useUpdateProduct → useApiUpdate]
-        H5[useDeleteProduct → useApiDelete]
+        H2[useProductsPaginated → useApiPaginated]
+        H3[useProductsWithRouter → usePaginationWithRouter]
+        H4[useProduct → useApiDetail]
+        H5[useCreateProduct → useApiCreate]
+        H6[useUpdateProduct → useApiUpdate]
+        H7[useDeleteProduct → useApiDelete]
     end
 
     subgraph Services["API Service Layer"]
@@ -760,16 +943,20 @@ flowchart TD
     end
 
     C1 --> H1
-    C1 --> H5
-    C2 --> H2
-    C3 --> H3
-    C3 --> H4
+    C1 --> H2
+    C1 --> H3
+    C1 --> H7
+    C2 --> H4
+    C3 --> H5
+    C3 --> H6
 
     H1 --> SProd
     H2 --> SProd
-    H3 --> SProd
+    H3 --> H2
     H4 --> SProd
     H5 --> SProd
+    H6 --> SProd
+    H7 --> SProd
 
     SProd --> SBase
 
