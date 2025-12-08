@@ -13,6 +13,7 @@ app# 📚 TÀI LIỆU THAM KHẢO API BACKEND
 > - ✅ Làm rõ sự khác biệt giữa Nullable vs Optional Fields
 > - ✅ Bổ sung đầy đủ min/max constraints vào Validation Rules
 > - ✅ Ghi chú về Promotions Status filter chưa được triển khai
+> - ✅ Cập nhật Top Products và Top Customers Reports: sử dụng camelCase và limit thay vì pagination
 
 ---
 
@@ -140,11 +141,15 @@ interface PagedList<T> {
 
 ### 1.7. Query Parameters Naming Convention
 
-**⚠️ QUAN TRỌNG:** Backend API sử dụng **PascalCase** cho tất cả query parameters.
+**⚠️ QUAN TRỌNG:** Backend API sử dụng **PascalCase** cho tất cả query parameters, **TRỪ** các endpoint Reports sau đây sử dụng **camelCase**:
 
-**Ví dụ:**
-- ✅ Đúng: `Page`, `PageSize`, `Search`, `SortBy`, `SortDesc`, `CategoryId`, `MinPrice`
+**Endpoints sử dụng PascalCase (hầu hết):**
+- ✅ Đúng: `Page`, `PageSize`, `Search`, `SortBy`, `SortDesc`, `CategoryId`, `MinPrice`, `StartDate`, `EndDate`, `GroupBy`
 - ❌ Sai: `page`, `pageSize`, `search`, `sortBy`, `sortDesc`, `categoryId`, `minPrice`
+
+**Endpoints sử dụng camelCase (ngoại lệ):**
+- `/api/admin/reports/top-products`: `startDate`, `endDate`, `limit`
+- `/api/admin/reports/top-customers`: `startDate`, `endDate`, `limit`
 
 **Lưu ý khi implement TypeScript:**
 - TypeScript interfaces có thể sử dụng camelCase để tuân theo convention của TypeScript
@@ -2010,59 +2015,55 @@ interface CategorySalesDto {
 
 ---
 
-### 11.3. 🏆 Top Products Report (Paginated)
+### 11.3. 🏆 Top Products Report
 
 **Endpoint:** `GET /api/admin/reports/top-products`
 **Authorization:** Admin
-**Description:** Báo cáo sản phẩm bán chạy nhất (có phân trang, fixed sorting theo TotalRevenue DESC)
+**Description:** Báo cáo sản phẩm bán chạy nhất (không phân trang, sử dụng limit)
 
 #### Query Parameters
 
 ```typescript
-interface TopProductsSearchRequest {
-  // Pagination (từ BasePagedRequest)
-  page?: number;          // Default: 1
-  pageSize?: number;      // Default: 10, Max: 100
-
-  // Filters
-  startDate: string;      // Required, ISO 8601 DateTime
-  endDate: string;        // Required, ISO 8601 DateTime
+interface TopProductsRequest {
+  startDate?: string;     // Optional, ISO 8601 DateTime
+  endDate?: string;       // Optional, ISO 8601 DateTime
+  limit?: number;          // Optional, integer, default: 10
 }
 ```
 
-**LƯU Ý:** Endpoint này **KHÔNG** hỗ trợ `Search`, `SortBy`, `SortDesc` vì sử dụng fixed sorting theo `TotalRevenue DESC`.
+**⚠️ LƯU Ý QUAN TRỌNG:** 
+- Endpoint này sử dụng **camelCase** cho query parameters (`startDate`, `endDate`, `limit`), **KHÔNG phải PascalCase** như các endpoint khác
+- Endpoint này **KHÔNG** hỗ trợ phân trang (`Page`, `PageSize`), thay vào đó sử dụng `limit` để giới hạn số lượng kết quả
+- Endpoint này **KHÔNG** hỗ trợ `Search`, `SortBy`, `SortDesc` vì sử dụng fixed sorting theo `TotalRevenue DESC`
+
+#### Validation Rules
+
+- `startDate`: Optional, ISO 8601 DateTime format
+- `endDate`: Optional, ISO 8601 DateTime format
+- `limit`: Optional, integer (int32), default: 10
 
 #### Response
 
 ```typescript
-interface PagedList<TopProductDto> {
-  page: number;
-  pageSize: number;
-  totalCount: number;
-  totalPages: number;
-  hasPrevious: boolean;
-  hasNext: boolean;
-  items: TopProductDto[];
-}
-
 interface TopProductDto {
   productId: number;
   productName: string;
   totalQuantitySold: number;
   totalRevenue: number;
   orderCount: number;
-}
+}[]
 ```
+
+**Lưu ý:** Response là một array, không phải `PagedList<T>`.
 
 #### Example Request
 
 ```typescript
 const response = await axios.get('/api/admin/reports/top-products', {
   params: {
-    Page: 1,
-    PageSize: 10,
-    StartDate: '2025-01-01T00:00:00Z',
-    EndDate: '2025-01-31T23:59:59Z'
+    startDate: '2025-01-01T00:00:00Z',  // camelCase, không phải PascalCase
+    endDate: '2025-01-31T23:59:59Z',    // camelCase, không phải PascalCase
+    limit: 10                            // camelCase, không phải PascalCase
   },
   headers: {
     Authorization: `Bearer ${accessToken}`
@@ -2072,48 +2073,60 @@ const response = await axios.get('/api/admin/reports/top-products', {
 
 ---
 
-### 11.4. 👥 Top Customers Report (Paginated)
+### 11.4. 👥 Top Customers Report
 
 **Endpoint:** `GET /api/admin/reports/top-customers`
 **Authorization:** Admin
-**Description:** Báo cáo khách hàng chi tiêu nhiều nhất (có phân trang, fixed sorting theo TotalSpent DESC)
+**Description:** Báo cáo khách hàng chi tiêu nhiều nhất (không phân trang, sử dụng limit)
 
 #### Query Parameters
 
 ```typescript
-interface TopCustomersSearchRequest {
-  // Pagination (từ BasePagedRequest)
-  page?: number;          // Default: 1
-  pageSize?: number;      // Default: 10, Max: 100
-
-  // Filters
-  startDate: string;      // Required, ISO 8601 DateTime
-  endDate: string;        // Required, ISO 8601 DateTime
+interface TopCustomersRequest {
+  startDate?: string;     // Optional, ISO 8601 DateTime
+  endDate?: string;       // Optional, ISO 8601 DateTime
+  limit?: number;         // Optional, integer, default: 10
 }
 ```
 
-**LƯU Ý:** Endpoint này **KHÔNG** hỗ trợ `Search`, `SortBy`, `SortDesc` vì sử dụng fixed sorting theo `TotalSpent DESC`.
+**⚠️ LƯU Ý QUAN TRỌNG:** 
+- Endpoint này sử dụng **camelCase** cho query parameters (`startDate`, `endDate`, `limit`), **KHÔNG phải PascalCase** như các endpoint khác
+- Endpoint này **KHÔNG** hỗ trợ phân trang (`Page`, `PageSize`), thay vào đó sử dụng `limit` để giới hạn số lượng kết quả
+- Endpoint này **KHÔNG** hỗ trợ `Search`, `SortBy`, `SortDesc` vì sử dụng fixed sorting theo `TotalSpent DESC`
+
+#### Validation Rules
+
+- `startDate`: Optional, ISO 8601 DateTime format
+- `endDate`: Optional, ISO 8601 DateTime format
+- `limit`: Optional, integer (int32), default: 10
 
 #### Response
 
 ```typescript
-interface PagedList<TopCustomerDto> {
-  page: number;
-  pageSize: number;
-  totalCount: number;
-  totalPages: number;
-  hasPrevious: boolean;
-  hasNext: boolean;
-  items: TopCustomerDto[];
-}
-
 interface TopCustomerDto {
   customerId: number;
   customerName: string;
   totalOrders: number;
   totalSpent: number;
   lastOrderDate: string;  // ISO 8601 DateTime
-}
+}[]
+```
+
+**Lưu ý:** Response là một array, không phải `PagedList<T>`.
+
+#### Example Request
+
+```typescript
+const response = await axios.get('/api/admin/reports/top-customers', {
+  params: {
+    startDate: '2025-01-01T00:00:00Z',  // camelCase, không phải PascalCase
+    endDate: '2025-01-31T23:59:59Z',    // camelCase, không phải PascalCase
+    limit: 10                            // camelCase, không phải PascalCase
+  },
+  headers: {
+    Authorization: `Bearer ${accessToken}`
+  }
+});
 ```
 
 ---
@@ -2662,14 +2675,16 @@ export interface SalesReportDto {
   categoryBreakdown: CategorySalesDto[];
 }
 
-export interface TopProductsSearchRequest extends BasePagedRequest {
-  startDate: string;
-  endDate: string;
+export interface TopProductsRequest {
+  startDate?: string;     // Optional, ISO 8601 DateTime
+  endDate?: string;       // Optional, ISO 8601 DateTime
+  limit?: number;         // Optional, integer, default: 10
 }
 
-export interface TopCustomersSearchRequest extends BasePagedRequest {
-  startDate: string;
-  endDate: string;
+export interface TopCustomersRequest {
+  startDate?: string;     // Optional, ISO 8601 DateTime
+  endDate?: string;       // Optional, ISO 8601 DateTime
+  limit?: number;         // Optional, integer, default: 10
 }
 
 export interface TopProductDto {
@@ -2973,8 +2988,8 @@ try {
 | Promotions | PromoCode, Description | Id, PromoCode, DiscountValue, StartDate, EndDate, UsedCount, Status | Status |
 | Users | Username, FullName | Id, Username, FullName, Role, CreatedAt | Role |
 | Inventory | ProductName, Barcode | Id, ProductName, Barcode, Quantity, UpdatedAt, Status | ProductId, MinQuantity, MaxQuantity |
-| Top Products | - | Fixed: TotalRevenue DESC | StartDate, EndDate |
-| Top Customers | - | Fixed: TotalSpent DESC | StartDate, EndDate |
+| Top Products | - | Fixed: TotalRevenue DESC | startDate, endDate, limit (camelCase) |
+| Top Customers | - | Fixed: TotalSpent DESC | startDate, endDate, limit (camelCase) |
 
 ### 14.3. Authorization Matrix
 
