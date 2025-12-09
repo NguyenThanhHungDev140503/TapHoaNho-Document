@@ -116,6 +116,7 @@ const userPageConfig: GenericPageConfig<UserEntity, CreateUserRequest, UpdateUse
 - `useApiCreate/Update/Delete` → trong GenericPage
 - `TanStack Router routeApi` → prop của GenericPage
 - `Ant Design` components → UI layer
+- **Param mapping**: toàn bộ query params gửi lên backend phải dùng PascalCase (`Page`, `PageSize`, `StartDate`, `EndDate`, ...), kể cả các endpoint reports như `top-products` và `top-customers`; FE giữ camelCase nội bộ và convert khi call API.
 
 **Mở rộng:**
 - GenericTable component mới

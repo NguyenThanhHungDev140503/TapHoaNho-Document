@@ -1983,7 +1983,7 @@ const { data, isLoading } = useApiPaginated<TopProductEntity>({
 });
 ```
 
-**Request**: `GET /api/admin/reports/top-products?page=1&pagesize=10&startdate=2024-01-01&enddate=2024-01-31`
+**Request**: `GET /api/admin/reports/top-products?Page=1&PageSize=10&StartDate=2024-01-01&EndDate=2024-01-31`
 
 **Response**:
 ```json
@@ -2013,9 +2013,9 @@ const { data, isLoading } = useApiPaginated<TopProductEntity>({
 ```
 
 **Lưu ý**:
-- ✅ Có phân trang (page, pageSize)
+- ✅ Có phân trang (Page, PageSize) — gửi PascalCase khi call API
 - ❌ KHÔNG hỗ trợ search, sortBy, sortDesc
-- ✅ Yêu cầu startDate, endDate
+- ℹ️ `StartDate`, `EndDate` là optional (PascalCase khi gửi)
 
 ### 9.4. GET /api/admin/reports/top-customers - Top Customers
 
