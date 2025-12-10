@@ -72,25 +72,6 @@
         "tags": [
           "Auth"
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefreshTokenRequest"
-              }
-            },
-            "text/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefreshTokenRequest"
-              }
-            },
-            "application/*+json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefreshTokenRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "OK"
@@ -2250,14 +2231,11 @@
         "additionalProperties": false
       },
       "LogoutRequest": {
-        "required": [
-          "refreshToken"
-        ],
         "type": "object",
         "properties": {
           "refreshToken": {
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -2278,24 +2256,6 @@
             "minimum": 1,
             "type": "integer",
             "format": "int32"
-          }
-        },
-        "additionalProperties": false
-      },
-      "RefreshTokenRequest": {
-        "required": [
-          "accessToken",
-          "refreshToken"
-        ],
-        "type": "object",
-        "properties": {
-          "accessToken": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "refreshToken": {
-            "minLength": 1,
-            "type": "string"
           }
         },
         "additionalProperties": false
