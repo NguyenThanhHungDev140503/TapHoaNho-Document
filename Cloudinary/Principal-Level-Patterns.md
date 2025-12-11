@@ -40,3 +40,4 @@
 - Dùng custom loader (Next/React) hoặc component Cloudinary để tạo URL transform nhất quán.
 - Prefetch ảnh quan trọng (hero) và lazy load phần còn lại; LQIP cho danh sách.
 
+

@@ -36,3 +36,4 @@
 - Integration: upload thật vào môi trường sandbox với preset khóa, assert trả về `secure_url`, `width/height`.
 - E2E: frontend → backend ký số → Cloudinary; kiểm tra DB lưu `publicId`.
 
+
