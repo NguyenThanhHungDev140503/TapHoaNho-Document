@@ -1130,6 +1130,13 @@
             }
           },
           {
+            "name": "OnlyLowStock",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "Search",
             "in": "query",
             "schema": {
@@ -1808,6 +1815,13 @@
             "schema": {
               "type": "number",
               "format": "double"
+            }
+          },
+          {
+            "name": "OnlyLowStock",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
             }
           },
           {
