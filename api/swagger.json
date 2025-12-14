@@ -820,6 +820,27 @@
             "description": "OK"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
       }
     },
     "/api/admin/orders/{id}/status": {
@@ -3283,35 +3304,28 @@
         "additionalProperties": false
       },
       "UpdateCategoryRequest": {
-        "required": [
-          "categoryName"
-        ],
         "type": "object",
         "properties": {
           "categoryName": {
             "maxLength": 100,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
       },
       "UpdateCustomerRequest": {
-        "required": [
-          "name",
-          "phone"
-        ],
         "type": "object",
         "properties": {
           "name": {
             "maxLength": 100,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "phone": {
             "maxLength": 20,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "email": {
             "maxLength": 100,
@@ -3328,110 +3342,89 @@
         "additionalProperties": false
       },
       "UpdateInventoryRequest": {
-        "required": [
-          "quantityChange",
-          "reason"
-        ],
         "type": "object",
         "properties": {
           "quantityChange": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "nullable": true
           },
           "reason": {
             "maxLength": 255,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
       },
       "UpdateOrderItemRequest": {
-        "required": [
-          "quantity"
-        ],
         "type": "object",
         "properties": {
           "quantity": {
             "maximum": 2147483647,
             "minimum": 1,
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false
       },
       "UpdateOrderStatusRequest": {
-        "required": [
-          "status"
-        ],
         "type": "object",
         "properties": {
           "status": {
-            "minLength": 1,
             "pattern": "^(pending|paid|canceled)$",
-            "type": "string"
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
       },
       "UpdateProductRequest": {
-        "required": [
-          "barcode",
-          "categoryId",
-          "price",
-          "productName",
-          "supplierId",
-          "unit"
-        ],
         "type": "object",
         "properties": {
-          "categoryId": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "supplierId": {
-            "type": "integer",
-            "format": "int32"
-          },
           "productName": {
             "maxLength": 100,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "barcode": {
             "maxLength": 50,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "price": {
             "minimum": 0.01,
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "nullable": true
           },
           "unit": {
             "maxLength": 20,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
+          },
+          "categoryId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "supplierId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false
       },
       "UpdatePromotionRequest": {
-        "required": [
-          "discountType",
-          "discountValue",
-          "endDate",
-          "promoCode",
-          "startDate",
-          "status"
-        ],
         "type": "object",
         "properties": {
           "promoCode": {
             "maxLength": 50,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "description": {
             "maxLength": 255,
@@ -3439,58 +3432,59 @@
             "nullable": true
           },
           "discountType": {
-            "minLength": 1,
             "pattern": "^(percent|fixed)$",
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "discountValue": {
             "minimum": 0.01,
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "nullable": true
           },
           "startDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "nullable": true
           },
           "endDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "nullable": true
           },
           "minOrderAmount": {
             "minimum": 0,
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "nullable": true
           },
           "usageLimit": {
             "maximum": 2147483647,
             "minimum": 1,
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "nullable": true
           },
           "status": {
-            "minLength": 1,
             "pattern": "^(active|inactive)$",
-            "type": "string"
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
       },
       "UpdateSupplierRequest": {
-        "required": [
-          "name",
-          "phone"
-        ],
         "type": "object",
         "properties": {
           "name": {
             "maxLength": 100,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "phone": {
             "maxLength": 20,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "email": {
             "maxLength": 100,
@@ -3506,17 +3500,12 @@
         "additionalProperties": false
       },
       "UpdateUserRequest": {
-        "required": [
-          "fullName",
-          "role",
-          "username"
-        ],
         "type": "object",
         "properties": {
           "username": {
             "maxLength": 50,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "password": {
             "maxLength": 255,
@@ -3525,14 +3514,15 @@
           },
           "fullName": {
             "maxLength": 100,
-            "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "role": {
             "maximum": 1,
             "minimum": 0,
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false
