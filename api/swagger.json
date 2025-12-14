@@ -3284,15 +3284,10 @@
       },
       "UpdateCategoryRequest": {
         "required": [
-          "categoryName",
-          "id"
+          "categoryName"
         ],
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int32"
-          },
           "categoryName": {
             "maxLength": 100,
             "minLength": 1,
@@ -3303,16 +3298,11 @@
       },
       "UpdateCustomerRequest": {
         "required": [
-          "id",
           "name",
           "phone"
         ],
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int32"
-          },
           "name": {
             "maxLength": 100,
             "minLength": 1,
@@ -3379,7 +3369,7 @@
         "properties": {
           "status": {
             "minLength": 1,
-            "pattern": "^(paid|canceled)$",
+            "pattern": "^(pending|paid|canceled)$",
             "type": "string"
           }
         },
@@ -3389,7 +3379,6 @@
         "required": [
           "barcode",
           "categoryId",
-          "id",
           "price",
           "productName",
           "supplierId",
@@ -3397,10 +3386,6 @@
         ],
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int32"
-          },
           "categoryId": {
             "type": "integer",
             "format": "int32"
@@ -3437,17 +3422,12 @@
           "discountType",
           "discountValue",
           "endDate",
-          "id",
           "promoCode",
           "startDate",
           "status"
         ],
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int32"
-          },
           "promoCode": {
             "maxLength": 50,
             "minLength": 1,
@@ -3497,16 +3477,11 @@
       },
       "UpdateSupplierRequest": {
         "required": [
-          "id",
           "name",
           "phone"
         ],
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int32"
-          },
           "name": {
             "maxLength": 100,
             "minLength": 1,
@@ -3533,16 +3508,11 @@
       "UpdateUserRequest": {
         "required": [
           "fullName",
-          "id",
           "role",
           "username"
         ],
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int32"
-          },
           "username": {
             "maxLength": 50,
             "minLength": 1,
