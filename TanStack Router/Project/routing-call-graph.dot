@@ -1,0 +1,131 @@
+digraph RoutingCallGraph {
+    rankdir=TB;
+    node [shape=box, style=rounded];
+    
+    // Entry Point
+    routeTree [label="routeTree.ts\n(Main Entry)", fillcolor="#e1f5fe", style="filled,rounded"];
+    
+    // Imports
+    subgraph cluster_imports {
+        label="Imports";
+        style=dashed;
+        rootRoute [label="__root.tsx\nrootRoute"];
+        authLayout [label="auth.layout.tsx\nauthLayoutRoute"];
+        mainLayout [label="main.layout.tsx\nmainLayoutRoute"];
+        adminLayoutFunc [label="admin.layout.tsx\ncreateAdminLayoutRoute()"];
+        staffLayoutFunc [label="staff.layout.tsx\ncreateStaffLayoutRoute()"];
+        authRoutesModule [label="auth.routes.ts\nauthRoutes"];
+        staffRoutesModule [label="staff.routes.ts\nstaffRoutes"];
+        productsRoutesModule [label="products.routes.ts\nproductsRoutes"];
+    }
+    
+    // Core Function
+    buildRoutes [label="buildRoutesFromConfig()\n(Recursive Builder)", fillcolor="#fff3e0", style="filled,rounded"];
+    
+    // TanStack Router API
+    createRoute [label="createRoute()\n(TanStack Router)", fillcolor="#f3e5f5", style="filled,rounded"];
+    addChildren [label="addChildren()\n(TanStack Router)", fillcolor="#f3e5f5", style="filled,rounded"];
+    createRouter [label="createRouter()\n(TanStack Router)", fillcolor="#f3e5f5", style="filled,rounded"];
+    
+    // Route Arrays
+    authModuleRoutes [label="authModuleRoutes[]", fillcolor="#e8f5e9", style="filled,rounded"];
+    adminModuleRoutes [label="adminModuleRoutes[]", fillcolor="#e8f5e9", style="filled,rounded"];
+    staffModuleRoutes [label="staffModuleRoutes[]", fillcolor="#e8f5e9", style="filled,rounded"];
+    
+    // Built Routes
+    authRoutesBuilt [label="authRoutesBuilt[]", fillcolor="#fff9c4", style="filled,rounded"];
+    adminRoutesBuilt [label="adminRoutes[]", fillcolor="#fff9c4", style="filled,rounded"];
+    staffRoutesBuilt [label="staffRoutesBuilt[]", fillcolor="#fff9c4", style="filled,rounded"];
+    
+    // Layout Routes (Created)
+    adminLayoutRoute [label="adminLayoutRoute\n(/admin)", fillcolor="#fce4ec", style="filled,rounded"];
+    staffLayoutRoute [label="staffLayoutRoute\n(/staff)", fillcolor="#fce4ec", style="filled,rounded"];
+    
+    // Final Route Tree
+    routeTreeFinal [label="routeTree\n(Final Tree)", fillcolor="#e1f5fe", style="filled,rounded"];
+    routerInstance [label="router\n(Exported Instance)", fillcolor="#c8e6c9", style="filled,rounded"];
+    
+    // Utils
+    subgraph cluster_utils {
+        label="Utils";
+        style=dashed;
+        createRoleGuard [label="routeGuards.ts\ncreateRoleGuard()"];
+        generateCRUD [label="routeHelpers.ts\ngenerateCRUDRoutesConfigs()"];
+        generateManagement [label="routeHelpers.ts\ngenerateManagementRouteConfigs()"];
+        createHierarchical [label="routeHelpers.ts\ncreateHierarchicalRouteConfig()"];
+    }
+    
+    // Auth Store
+    useAuthStore [label="useAuthStore\n(Zustand Store)", fillcolor="#ffebee", style="filled,rounded"];
+    
+    // Flow: Imports
+    routeTree -> rootRoute [label="import"];
+    routeTree -> authLayout [label="import"];
+    routeTree -> mainLayout [label="import"];
+    routeTree -> adminLayoutFunc [label="import"];
+    routeTree -> staffLayoutFunc [label="import"];
+    routeTree -> authRoutesModule [label="import"];
+    routeTree -> staffRoutesModule [label="import"];
+    routeTree -> productsRoutesModule [label="import"];
+    
+    // Flow: Module Arrays
+    authRoutesModule -> authModuleRoutes [label="push to array"];
+    staffRoutesModule -> staffModuleRoutes [label="push to array"];
+    productsRoutesModule -> adminModuleRoutes [label="push to array"];
+    
+    // Flow: Layout Creation
+    mainLayout -> adminLayoutFunc [label="createAdminLayoutRoute(mainLayout)"];
+    adminLayoutFunc -> adminLayoutRoute;
+    
+    mainLayout -> staffLayoutFunc [label="createStaffLayoutRoute(mainLayout)"];
+    staffLayoutFunc -> staffLayoutRoute;
+    
+    // Flow: Build Routes
+    authModuleRoutes -> buildRoutes [label="flatMap configs"];
+    buildRoutes -> createRoute [label="for each config"];
+    createRoute -> buildRoutes [label="recursive (if children)"];
+    buildRoutes -> addChildren [label="attach children"];
+    buildRoutes -> authRoutesBuilt;
+    
+    adminModuleRoutes -> buildRoutes [label="flatMap configs"];
+    buildRoutes -> adminRoutesBuilt;
+    
+    staffModuleRoutes -> buildRoutes [label="flatMap configs"];
+    buildRoutes -> staffRoutesBuilt;
+    
+    // Flow: Attach Routes to Layouts
+    authRoutesBuilt -> authLayout [label="addChildren()"];
+    adminRoutesBuilt -> adminLayoutRoute [label="addChildren()"];
+    staffRoutesBuilt -> staffLayoutRoute [label="addChildren()"];
+    
+    // Flow: Attach Layouts to Main
+    adminLayoutRoute -> mainLayout [label="addChildren()"];
+    staffLayoutRoute -> mainLayout [label="addChildren()"];
+    
+    // Flow: Build Final Tree
+    authLayout -> routeTreeFinal [label="rootRoute.addChildren()"];
+    mainLayout -> routeTreeFinal [label="rootRoute.addChildren()"];
+    
+    // Flow: Create Router
+    routeTreeFinal -> createRouter;
+    createRouter -> routerInstance;
+    
+    // Flow: Utils Usage
+    generateCRUD -> createHierarchical;
+    generateManagement -> createHierarchical;
+    createHierarchical -> createRoleGuard;
+    createRoleGuard -> useAuthStore;
+    
+    adminLayoutFunc -> useAuthStore [label="check auth"];
+    staffLayoutFunc -> useAuthStore [label="check auth + role"];
+    
+    // Styling
+    edge [color="#424242"];
+}
+
+
+
+
+
+
+

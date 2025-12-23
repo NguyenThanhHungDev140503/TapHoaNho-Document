@@ -18,3 +18,16 @@
 3. Cập nhật entity + DTO + AutoMapper để đọc/ghi `ImageFileId`.
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,60 @@
+digraph  {
+rankdir="LR"
+
+// Cluster: ProductManagementPage.tsx
+subgraph "cluster_/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/pages/ProductManagementPage.tsx" {
+label="${workspace}/shiny-carnival/frontend/src/features/products/pages/ProductManagementPage.tsx"
+"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/pages/ProductManagementPage.tsx#ProductManagementPage@15:0"[label="ProductManagementPage", ]
+}
+
+// Cluster: useProductManagementPage.ts (cung cấp data ProductEntity[])
+subgraph "cluster_/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/hooks/useProductManagementPage.ts" {
+label="${workspace}/shiny-carnival/frontend/src/features/products/hooks/useProductManagementPage.ts"
+"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/hooks/useProductManagementPage.ts#useProductManagementPage@14:0"[label="useProductManagementPage", ]
+"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/hooks/useProductManagementPage.ts#createProductsQueryOptions+useSuspenseQuery@18:0"[label="createProductsQueryOptions + useSuspenseQuery\n→ pagedList.items: ProductEntity[]", ]
+}
+
+// Cluster: GenericPage.tsx (handleEdit và action column)
+subgraph "cluster_/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx" {
+label="${workspace}/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx"
+"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#GenericPage@53:0"[label="GenericPage", ]
+"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#actionColumn@106:0"[label="actionColumn render\n(Button Edit onClick)", ]
+"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#handleEdit@97:0"[label="handleEdit(record)", ]
+}
+
+// Edges: ai gọi handleEdit và record đến từ đâu
+
+// Page gọi hook để lấy products
+{"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/pages/ProductManagementPage.tsx#ProductManagementPage@15:0"} -> {"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/hooks/useProductManagementPage.ts#useProductManagementPage@14:0"} [label="useProductManagementPage()", ]
+
+// Hook fetch ProductEntity[]
+{"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/hooks/useProductManagementPage.ts#useProductManagementPage@14:0"} -> {"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/hooks/useProductManagementPage.ts#createProductsQueryOptions+useSuspenseQuery@18:0"} [label="useSuspenseQuery(options)", ]
+
+// Hook trả products cho GenericPage.data
+{"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/hooks/useProductManagementPage.ts#useProductManagementPage@14:0"} -> {"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#GenericPage@53:0"} [label="products: ProductEntity[] → data", ]
+
+// ProductManagementPage render GenericPage (truyền data và renderCustomForm)
+{"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/features/products/pages/ProductManagementPage.tsx#ProductManagementPage@15:0"} -> {"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#GenericPage@53:0"} [label="render <GenericPage data={products} ...>", ]
+
+// Bảng render actionColumn; nút Edit gọi handleEdit(record)
+{"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#GenericPage@53:0"} -> {"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#actionColumn@106:0"} [label="columns with actionColumn", ]
+
+{"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#actionColumn@106:0"} -> {"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#handleEdit@97:0"} [label="Button Edit onClick={() => handleEdit(record)}", ]
+
+// handleEdit nhận đúng record (một phần tử của data/products)
+{"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#GenericPage@53:0"} -> {"/home/nguyen-thanh-hung/Documents/TapHoaNho/shiny-carnival/frontend/src/components/GenericCRUD/GenericPage/GenericPage.tsx#handleEdit@97:0"} [label="record từ data (ProductEntity) -> handleEdit(record)", ]
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

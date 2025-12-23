@@ -14,3 +14,16 @@
   - Bảng `Products` thêm cột `image_file_id` (nullable) để map ảnh với product.
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
