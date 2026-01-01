@@ -2,7 +2,7 @@
   "openapi": "3.0.4",
   "info": {
     "title": "RetailStoreManagement",
-    "version": "1.0"
+    "version": "v1"
   },
   "paths": {
     "/api/Auth/login": {
@@ -460,6 +460,40 @@
             "schema": {
               "type": "integer",
               "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/admin/imagekit/auth": {
+      "post": {
+        "tags": [
+          "ImageKit"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/admin/imagekit/file/{fileId}": {
+      "delete": {
+        "tags": [
+          "ImageKit"
+        ],
+        "parameters": [
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -1926,6 +1960,66 @@
         }
       }
     },
+    "/api/public/products/by-ids": {
+      "post": {
+        "tags": [
+          "PublicProducts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32"
+                }
+              }
+            },
+            "text/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32"
+                }
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponseDtoListApiResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponseDtoListApiResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponseDtoListApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/reports/revenue": {
       "get": {
         "tags": [
@@ -2826,6 +2920,16 @@
             "maxLength": 20,
             "minLength": 1,
             "type": "string"
+          },
+          "imageUrl": {
+            "maxLength": 1024,
+            "type": "string",
+            "nullable": true
+          },
+          "imageFileId": {
+            "maxLength": 50,
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -3150,6 +3254,14 @@
             "type": "integer",
             "format": "int32"
           },
+          "categoryId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "supplierId": {
+            "type": "integer",
+            "format": "int32"
+          },
           "productName": {
             "type": "string",
             "nullable": true
@@ -3177,6 +3289,14 @@
           "inventoryQuantity": {
             "type": "integer",
             "format": "int32"
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "imageFileId": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -3289,6 +3409,14 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "imageFileId": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -3305,6 +3433,34 @@
           },
           "data": {
             "$ref": "#/components/schemas/ProductResponseDto"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "statusCode": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProductResponseDtoListApiResponse": {
+        "type": "object",
+        "properties": {
+          "isError": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductResponseDto"
+            },
+            "nullable": true
           },
           "timestamp": {
             "type": "string",
@@ -3427,6 +3583,16 @@
           "supplierId": {
             "type": "integer",
             "format": "int32",
+            "nullable": true
+          },
+          "imageUrl": {
+            "maxLength": 100,
+            "type": "string",
+            "nullable": true
+          },
+          "imageFileId": {
+            "maxLength": 50,
+            "type": "string",
             "nullable": true
           }
         },
